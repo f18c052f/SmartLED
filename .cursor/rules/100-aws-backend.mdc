@@ -1,0 +1,115 @@
+---
+description: AWS CDK および AWS Lambda (TypeScript) におけるコーディング規約とベストプラクティス
+globs: ["aws/**/*"]
+---
+
+# AWS Backend Coding Standards (CDK & Lambda)
+
+## 1. 共通ルール
+
+- 言語は TypeScript を使用し、厳格な型定義（`strict: true`）を遵守すること。
+- エラーハンドリングは必ず行い、CloudWatch Logs にトレース可能な情報を出力すること。
+- コスト最適化のため、AWSリソースは「永年無料枠」の範囲内に収まる設計を徹底すること（例: Secrets Manager ではなく SSM Parameter Store を使用）。
+
+## 2. AWS Lambda 実装規約 (Few-shot Examples)
+
+### ✅ Good Example (環境変数の型検証と、SSMからの安全なシークレット取得)
+
+```typescript
+import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
+
+const ssmClient = new SSMClient({});
+
+export const handler = async (event: any): Promise<any> => {
+  try {
+    // 良い例: SSM Parameter StoreのSecureStringからAPIキーを取得（無料枠対応）
+    const command = new GetParameterCommand({
+      Name: process.env.GEMINI_API_KEY_PARAM_NAME,
+      WithDecryption: true,
+    });
+    const response = await ssmClient.send(command);
+    const apiKey = response.Parameter?.Value;
+
+    if (!apiKey) throw new Error("API Key not found in SSM");
+
+    // 正常処理...
+    return { statusCode: 200, body: JSON.stringify({ message: "Success" }) };
+  } catch (error) {
+    // 良い例: CloudWatchに記録し、適切なステータスコードを返す
+    console.error("Error processing request:", error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ message: "Internal Server Error" }),
+    };
+  }
+};
+```
+
+### ❌ Bad Example (ハードコード、例外処理なし)
+
+```typescript
+// 悪い例: シークレットのハードコードや、環境変数に直接APIキーを入れる設計
+const apiKey = process.env.GEMINI_API_KEY;
+
+export const handler = async (event: any) => {
+  // 悪い例: エラーハンドリングがない、型が不明確
+  const result = await someExternalApiCall(apiKey, event.data);
+  return result;
+};
+```
+
+## 3. AWS CDK 実装規約 (Few-shot Examples)
+
+### ✅ Good Example (最小権限の原則)
+
+```typescript
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as iam from "aws-cdk-lib/aws-iam";
+import { Construct } from "constructs";
+
+export class IoTBackendStack extends Construct {
+  constructor(scope: Construct, id: string) {
+    super(scope, id);
+
+    const myLambda = new lambda.Function(this, "MyFunction", {
+      /* ... */
+    });
+
+    // 良い例: 必要なリソース（特定のパラメータ）に対してのみ権限を付与
+    myLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:GetParameter"],
+        resources: [
+          `arn:aws:ssm:${process.env.CDK_DEFAULT_REGION}:${process.env.CDK_DEFAULT_ACCOUNT}:parameter/my-app/gemini-api-key`,
+        ],
+      }),
+    );
+  }
+}
+```
+
+### ❌ Bad Example (過剰な権限付与)
+
+```typescript
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as iam from "aws-cdk-lib/aws-iam";
+import { Construct } from "constructs";
+
+export class IoTBackendStack extends Construct {
+  constructor(scope: Construct, id: string) {
+    super(scope, id);
+
+    const myLambda = new lambda.Function(this, "MyFunction", {
+      /* ... */
+    });
+
+    // 悪い例: 管理者権限や、全リソースに対するワイルドカード権限の付与（セキュリティリスク）
+    myLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:*"],
+        resources: ["*"],
+      }),
+    );
+  }
+}
+```
