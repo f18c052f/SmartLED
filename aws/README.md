@@ -1,14 +1,37 @@
-# Welcome to your CDK TypeScript project
+# SmartLED AWS Backend (CDK + Lambda)
 
-This is a blank project for CDK development with TypeScript.
+ESP32 LED Bookshelf IoT 制御システムの AWS クラウドバックエンド。  
+Alexa → Lambda → Gemini API → IoT Core (MQTT) → ESP32 のフローを実現する Phase 1 基盤。
 
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
+## 構成
 
-## Useful commands
+- **IoTBackendStack**: Lambda (Alexa ハンドラ) + SSM/IoT 権限
+- **Lambda**: `src/handlers/alexa-led-control.ts` — Alexa リクエスト処理、Gemini API 呼び出し、IoT Core パブリッシュ
 
-* `npm run build`   compile typescript to js
-* `npm run watch`   watch for changes and compile
-* `npm run test`    perform the jest unit tests
-* `npx cdk deploy`  deploy this stack to your default AWS account/region
-* `npx cdk diff`    compare deployed stack with current state
-* `npx cdk synth`   emits the synthesized CloudFormation template
+## デプロイ前の準備
+
+1. **SSM Parameter Store に Gemini API キーを登録**
+
+   ```bash
+   aws ssm put-parameter \
+     --name "/smartled/gemini-api-key" \
+     --value "YOUR_GEMINI_API_KEY" \
+     --type "SecureString"
+   ```
+
+2. **依存関係のインストール**
+
+   ```bash
+   npm install
+   ```
+
+## コマンド
+
+| コマンド | 説明 |
+|---------|------|
+| `npm run build` | TypeScript をコンパイル |
+| `npm run watch` | 変更を監視してコンパイル |
+| `npm run test` | Jest でユニットテスト実行 |
+| `npx cdk synth` | CloudFormation テンプレートを生成 |
+| `npx cdk deploy` | スタックをデプロイ |
+| `npx cdk diff` | デプロイ済みスタックとの差分を表示 |
