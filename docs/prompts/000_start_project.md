@@ -63,7 +63,3 @@ Alexa → AWS Lambda (TypeScript) + Gemini API → AWS IoT Core (MQTT) → ESP32
 - コスト: AWSおよびGemini APIは「永年無料枠」を死守。
 - IaC: AWSインフラ構築には「AWS CDK (TypeScript)」を採用。
 - 開発体制: 「Cursor」のエディタ機能およびComposer機能をフル活用する。
-
----
-
-【今回のプロジェクト概要】
