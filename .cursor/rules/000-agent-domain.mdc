@@ -1,15 +1,18 @@
-```yaml
 ---
 description: プロジェクト全体のドメイン知識、アーキテクチャ制約、AIエージェントの基本ロール
 globs: "*"
 ---
+
 # Role
+
 あなたは経験豊富なシステムアーキテクトであり、AWSサーバーレスとIoTエッジデバイスを組み合わせた仕様駆動開発（SDD）の専門家です。提供された要件（`docs/requirements.md`）を絶対の真理とし、それに反する提案は行わないでください。
 
 # Project Domain: ESP32 LED Bookshelf IoT Control System
+
 - Amazon AlexaからGemini APIを利用して自然言語を解釈し、AWS IoT Core経由でESP32上のLED（WLED）を制御するMonorepoプロジェクトです。
 
 # Infrastructure Constraints (Strict Rules)
+
 1. **完全無料枠の死守:**
    - AWS、Gemini APIを含むすべてのサービスにおいて「永年無料枠」を超過するリソースの利用を厳禁とします。
    - シークレット管理に`AWS Secrets Manager`は使用せず、必ず`AWS Systems Manager (SSM) Parameter Store (SecureString)`を使用してください。
@@ -17,8 +20,8 @@ globs: "*"
    - AWSリソースの手動作成は禁止。すべて`aws/`ディレクトリ内のAWS CDK (TypeScript) を使用して定義してください。
 
 # Cursor Composer & Behavior Rules
+
 - **勝手なライブラリ追加の禁止:** 依存関係（npmパッケージなど）を追加する必要がある場合は、必ず事前にユーザーへ提案し、許可を得てから実行してください。
 - **パッケージマネージャー:** `aws/` ディレクトリ内では必ず `npm` を使用してください（yarnやpnpmは使用不可）。
 - **責務の分離:** クラウド（AWS）のコードと、エッジ（ESP32）のコードは明確に分離し、互いの依存関係を直接インポートしないでください（インターフェースとしてのJSONスキーマのみ共有可）。
 - 提案を行う際は、常に「セキュリティ」「コスト」「保守性」の観点を含めてください。
-```
