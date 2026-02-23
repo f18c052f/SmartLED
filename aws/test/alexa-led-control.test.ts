@@ -1,4 +1,4 @@
-import { extractNaturalLanguageFromAlexa, AlexaRequest } from "../src/handlers/alexa-led-control";
+import { extractNaturalLanguageFromAlexa, AlexaRequest } from "../src/lib/alexa-request";
 
 describe("extractNaturalLanguageFromAlexa", () => {
   it("extracts value from 'phrase' slot", () => {

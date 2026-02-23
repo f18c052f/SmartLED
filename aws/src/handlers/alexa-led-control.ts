@@ -2,6 +2,9 @@ import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 import { IoTClient, DescribeEndpointCommand } from "@aws-sdk/client-iot";
 import { IoTDataPlaneClient, PublishCommand } from "@aws-sdk/client-iot-data-plane";
 import { fetchLedParams } from "../lib/gemini-client.js";
+import { AlexaRequest, extractNaturalLanguageFromAlexa } from "../lib/alexa-request.js";
+
+export type { AlexaRequest } from "../lib/alexa-request.js";
 
 const ssmClient = new SSMClient({});
 const iotClient = new IoTClient({});
@@ -19,19 +22,6 @@ async function getIoTDataClient(): Promise<IoTDataPlaneClient> {
     endpoint: `https://${res.endpointAddress}`,
   });
   return iotDataClient;
-}
-
-/** Alexa Custom Skill のリクエストペイロード型 */
-export interface AlexaRequest {
-  version?: string;
-  request?: {
-    type?: string;
-    intent?: {
-      name?: string;
-      slots?: Record<string, { name?: string; value?: string }>;
-    };
-  };
-  [key: string]: unknown;
 }
 
 /** Lambda レスポンス型 */
@@ -104,18 +94,6 @@ export const handler = async (event: AlexaRequest): Promise<LambdaResponse> => {
     return buildResponse(500, { message: "Internal Server Error" });
   }
 };
-
-/**
- * Alexa Custom Skill のインテントリクエストから自然言語テキストを抽出する。
- * スロット名 "phrase" または "utterance" を検索する。
- */
-export function extractNaturalLanguageFromAlexa(event: AlexaRequest): string {
-  const intent = event?.request?.intent;
-  if (!intent?.slots) return "";
-
-  const slot = intent.slots["phrase"] ?? intent.slots["utterance"];
-  return slot?.value ?? "";
-}
 
 function buildResponse(statusCode: number, body: object): LambdaResponse {
   return {
