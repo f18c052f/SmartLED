@@ -1,5 +1,5 @@
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
-const GEMINI_MODEL = "gemini-2.0-flash-lite";
+const GEMINI_MODEL = "gemini-2.5-flash-lite";
 
 const VALID_EFFECTS = ["solid", "fade", "rainbow", "sparkle", "fire", "twinkle", "breath"] as const;
 type Effect = (typeof VALID_EFFECTS)[number];

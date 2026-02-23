@@ -50,7 +50,7 @@ describe("fetchLedParams", () => {
 
     expect(result).toEqual(expected);
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("gemini-2.0-flash-lite"),
+      expect.stringContaining("gemini-2.5-flash-lite"),
       expect.objectContaining({ method: "POST" })
     );
   });
