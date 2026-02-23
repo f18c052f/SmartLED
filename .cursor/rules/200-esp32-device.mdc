@@ -1,0 +1,190 @@
+---
+description: ESP32エッジデバイス（PlatformIO / C++）および WLED 設定のコーディング規約とベストプラクティス
+globs: ["esp32/**/*"]
+---
+
+# ESP32 Device Coding Standards
+
+## 1. ハードウェア保護と安全性（最重要）
+
+> `docs/requirements.md` の安全仕様が唯一の真実。この数値を超える設定・コードを生成してはならない。
+
+- **電流制限の強制:** WLED の設定用 JSON（`cfg.json`）や、API 経由で LED 状態を変更するコード・ペイロードを生成・修正する際は、必ず `docs/requirements.md` の安全仕様に従うこと。
+- WLED の ABL（自動輝度制限）設定値 `abl.mA` は、各ポートの物理ヒューズ容量（5A）に安全マージンを考慮し、**4250mA（4.25A）以下** に設定すること。これを超える値を含む設定・提案を生成してはならない。
+- **WLED JSON API ペイロード例（安全な上限値）:**
+
+```json
+// ✅ Good: ABL を遵守した cfg.json の電流設定
+{
+  "hw": {
+    "led": {
+      "ins": [
+        { "pin": [2], "type": 22, "len": 300, "maxpwr": 4250 }
+      ]
+    }
+  }
+}
+```
+
+```json
+// ❌ Bad: ヒューズ定格（5000mA）を超える、または安全マージンなし
+{
+  "hw": {
+    "led": {
+      "ins": [
+        { "pin": [2], "type": 22, "len": 300, "maxpwr": 5000 }
+      ]
+    }
+  }
+}
+```
+
+---
+
+## 2. MQTTメッセージスキーマ（クラウドとのインターフェース契約）
+
+> ESP32 は Lambda が IoT Core へパブリッシュする以下の JSON を **唯一のインターフェース** として受信する。スキーマを勝手に変更・拡張してはならない。変更が必要な場合は `aws/` 側と同時に変更すること。
+
+- **サブスクライブトピック:** `smartled/esp32/control`
+- **ペイロードスキーマ:**
+
+```json
+{
+  "color": "#ff6600",
+  "brightness": 128,
+  "effect": "solid"
+}
+```
+
+| フィールド | 型 | 制約 |
+|------------|------|------|
+| `color` | string | HEX カラーコード（`#rrggbb` 形式、小文字） |
+| `brightness` | integer | 0〜255（整数のみ。浮動小数点は許容しない） |
+| `effect` | string | `solid` / `fade` / `rainbow` / `sparkle` / `fire` / `twinkle` / `breath` のいずれか |
+
+- 受信した JSON のパース失敗・未知フィールドは **静かに無視** せず、Serial ログへ出力して現状の LED 状態を維持すること。
+
+---
+
+## 3. 認証情報とシークレット管理
+
+- WiFi の SSID・パスワード、AWS IoT の証明書・プライベートキーは **ソースコードにハードコードしてはならない。**
+- 証明書類（`cert.pem`, `private.key`, `root_ca.pem`）は `esp32/secrets/` に配置し、`.gitignore` で追跡対象から除外すること。
+- WiFi 認証情報は `esp32/include/config.h` に定義し、同様に `.gitignore` で除外すること。テンプレートとして `config.h.example` をリポジトリに含める。
+
+```cpp
+// ✅ Good: config.h.example（リポジトリに含めるテンプレート）
+#pragma once
+#define WIFI_SSID     "your-ssid"
+#define WIFI_PASSWORD "your-password"
+#define AWS_IOT_ENDPOINT "xxxxxxxxxxxx-ats.iot.ap-northeast-1.amazonaws.com"
+#define AWS_IOT_CLIENT_ID "smartled-esp32"
+```
+
+```cpp
+// ❌ Bad: main.cpp に直接認証情報を書く
+const char* ssid = "MyHomeWifi";
+const char* password = "password123";
+```
+
+---
+
+## 4. WLED HTTP API の利用規則
+
+- ESP32 から WLED を制御する場合は **WLED の JSON API**（`POST http://<wled-ip>/json/state`）を使用すること。
+- API リクエストは非同期（`WiFiClient` + `HTTPClient`）で行い、タイムアウトを必ず設定すること（推奨: 3000ms）。
+- WLED のアドレス（IP）はハードコードせず、`config.h` で定義すること。
+
+```cpp
+// ✅ Good: タイムアウト付き WLED API 呼び出し
+HTTPClient http;
+http.begin("http://" + String(WLED_IP) + "/json/state");
+http.setTimeout(3000);
+http.addHeader("Content-Type", "application/json");
+int code = http.POST(payload);
+if (code != HTTP_CODE_OK) {
+  Serial.printf("[WLED] API error: %d\n", code);
+}
+http.end();
+```
+
+```cpp
+// ❌ Bad: タイムアウト未設定・エラーハンドリングなし
+http.begin("http://192.168.1.100/json/state"); // IP ハードコード
+http.POST(payload);                             // 戻り値を無視
+```
+
+---
+
+## 5. エラーハンドリングと再接続ロジック
+
+- WiFi および MQTT の接続断は **必ず検出・再接続** する実装を行うこと。接続断のまま処理を続けてはならない。
+- 再接続のリトライには指数バックオフを使用し、無限ループによる CPU 占有を避けること。
+- `loop()` 内でブロッキング `delay()` を長時間（1秒以上）使用してはならない。ノンブロッキングなタイマー管理（`millis()` 比較）を使用すること。
+
+```cpp
+// ✅ Good: millis() を使ったノンブロッキング再接続
+unsigned long lastReconnectAttempt = 0;
+const unsigned long RECONNECT_INTERVAL = 5000;
+
+void loop() {
+  if (!mqttClient.connected()) {
+    unsigned long now = millis();
+    if (now - lastReconnectAttempt > RECONNECT_INTERVAL) {
+      lastReconnectAttempt = now;
+      reconnectMqtt();
+    }
+  }
+  mqttClient.loop();
+}
+```
+
+```cpp
+// ❌ Bad: ブロッキング再接続でループが止まる
+void loop() {
+  while (!mqttClient.connected()) {
+    mqttClient.connect(...);
+    delay(5000); // 5秒間 loop() が止まる
+  }
+}
+```
+
+---
+
+## 6. シリアルログ規約
+
+- デバッグ用の `Serial.print` はすべて `[モジュール名]` プレフィックスを付けること。
+- 本番ビルドでは `#ifdef DEBUG_MODE` で囲み、`platformio.ini` の `build_flags` で制御すること。
+
+```cpp
+// ✅ Good
+Serial.printf("[MQTT] Connected to %s\n", AWS_IOT_ENDPOINT);
+Serial.printf("[LED]  Received: color=%s brightness=%d\n", color.c_str(), brightness);
+
+// ❌ Bad
+Serial.println("connected");
+Serial.println(payload);
+```
+
+---
+
+## 7. 開発環境規約（PlatformIO）
+
+- プロジェクトは **PlatformIO** で管理し、`esp32/platformio.ini` に設定を集約すること。
+- ライブラリの依存関係は `platformio.ini` の `lib_deps` で管理し、バージョンを固定すること（`@バージョン` 形式）。
+- ビルド環境は `[env:smartled]` のように名前付きで定義すること。
+
+```ini
+; ✅ Good: platformio.ini の例
+[env:smartled]
+platform  = espressif32
+board     = esp32dev
+framework = arduino
+monitor_speed = 115200
+build_flags =
+  -D DEBUG_MODE
+lib_deps =
+  knolleary/PubSubClient@^2.8
+  bblanchon/ArduinoJson@^7.0
+  arduino-libraries/ArduinoHttpClient@^0.6
+```
