@@ -27,6 +27,14 @@ async function getIoTDataClient(): Promise<IoTDataPlaneClient> {
   return iotDataClient;
 }
 
+/** CloudWatch Logs に1行の構造化JSONとして出力する */
+function log(level: "INFO" | "WARN" | "ERROR", message: string, data?: Record<string, unknown>) {
+  const entry = JSON.stringify({ level, message, ...data });
+  if (level === "ERROR") console.error(entry);
+  else if (level === "WARN") console.warn(entry);
+  else console.log(entry);
+}
+
 /**
  * Alexa Custom Skill からのリクエストを処理する。
  * 自然言語 → Gemini API → LED パラメータ → IoT Core (MQTT) の順で処理する。
@@ -36,7 +44,7 @@ export const handler = async (event: AlexaRequest): Promise<AlexaResponse> => {
 
   // スキル起動時のウェルカムメッセージ
   if (requestType === "LaunchRequest") {
-    console.log("Received LaunchRequest");
+    log("INFO", "Received LaunchRequest");
     return buildAlexaResponse(
       "スマートLEDへようこそ。照明の色や明るさを言葉で指定してください。",
       false
@@ -45,7 +53,7 @@ export const handler = async (event: AlexaRequest): Promise<AlexaResponse> => {
 
   // セッション終了は応答不要（Alexaプロトコルの仕様）
   if (requestType === "SessionEndedRequest") {
-    console.log("Received SessionEndedRequest");
+    log("INFO", "Received SessionEndedRequest");
     return buildAlexaResponse("", true);
   }
 
@@ -54,17 +62,17 @@ export const handler = async (event: AlexaRequest): Promise<AlexaResponse> => {
     const topicPrefix = process.env.IOT_TOPIC_PREFIX;
 
     if (!paramName || !topicPrefix) {
-      console.error("Missing required env: GEMINI_API_KEY_PARAM_NAME or IOT_TOPIC_PREFIX");
+      log("ERROR", "Missing required env vars", { paramName, topicPrefix });
       return buildAlexaResponse("設定エラーが発生しました。管理者に確認してください。");
     }
 
     // Alexa インテントから自然言語テキストを抽出
     const naturalLanguage = extractNaturalLanguageFromAlexa(event);
     if (!naturalLanguage) {
-      console.warn("No phrase found in Alexa request:", JSON.stringify(event.request));
+      log("WARN", "No phrase found in Alexa request", { request: event.request });
       return buildAlexaResponse("すみません、うまく聞き取れませんでした。もう一度お試しください。");
     }
-    console.log("Natural language input:", naturalLanguage);
+    log("INFO", "Natural language input received", { naturalLanguage });
 
     // SSM Parameter Store から Gemini API キーを取得（無料枠対応）
     const ssmResponse = await ssmClient.send(
@@ -73,13 +81,13 @@ export const handler = async (event: AlexaRequest): Promise<AlexaResponse> => {
     const apiKey = ssmResponse.Parameter?.Value;
 
     if (!apiKey) {
-      console.error("API Key not found in SSM Parameter Store");
+      log("ERROR", "API Key not found in SSM Parameter Store", { paramName });
       return buildAlexaResponse("APIキーの取得に失敗しました。管理者に確認してください。");
     }
 
     // Gemini API で自然言語を解釈し、LED パラメータ（色・輝度・エフェクト）を取得
     const ledParams = await fetchLedParams(naturalLanguage, apiKey);
-    console.log("LED params from Gemini:", JSON.stringify(ledParams));
+    log("INFO", "LED params fetched from Gemini", { ledParams });
 
     // IoT Core (MQTT) へ制御メッセージをパブリッシュ
     const topic = `${topicPrefix}/control`;
@@ -92,11 +100,14 @@ export const handler = async (event: AlexaRequest): Promise<AlexaResponse> => {
       })
     );
 
-    console.log("Published LED params to topic:", topic);
+    log("INFO", "Published LED params to IoT Core", { topic, ledParams });
 
     return buildAlexaResponse("はい、照明を調整しました。");
   } catch (error) {
-    console.error("Error processing request:", error);
+    log("ERROR", "Unhandled error processing request", {
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
+    });
     return buildAlexaResponse("エラーが発生しました。しばらくしてからもう一度お試しください。");
   }
 };

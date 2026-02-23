@@ -101,4 +101,22 @@ describe("fetchLedParams", () => {
       "Failed to parse Gemini response as JSON"
     );
   });
+
+  it("parses response wrapped in ```json ... ``` markdown code block", async () => {
+    const params = { color: "#ff00ff", brightness: 220, effect: "rainbow" };
+    const markdown = "```json\n" + JSON.stringify(params) + "\n```";
+    mockFetch.mockResolvedValueOnce(makeMockResponse(markdown));
+
+    const result = await fetchLedParams("サイバーパンクにして", "test-api-key");
+    expect(result).toEqual(params);
+  });
+
+  it("parses response wrapped in ``` ... ``` markdown code block without language tag", async () => {
+    const params = { color: "#ff4500", brightness: 50, effect: "fade" };
+    const markdown = "```\n" + JSON.stringify(params) + "\n```";
+    mockFetch.mockResolvedValueOnce(makeMockResponse(markdown));
+
+    const result = await fetchLedParams("リラックスしたい", "test-api-key");
+    expect(result).toEqual(params);
+  });
 });

@@ -66,9 +66,16 @@ export async function fetchLedParams(naturalLanguage: string, apiKey: string): P
 }
 
 function parseLedParams(raw: string): LedParams {
+  // Gemini が ```json ... ``` 形式で返す場合があるため Markdown コードブロックを除去する
+  const cleaned = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw.trim());
+    parsed = JSON.parse(cleaned);
   } catch {
     throw new Error(`Failed to parse Gemini response as JSON: ${raw}`);
   }
