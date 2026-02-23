@@ -41,9 +41,7 @@ export class IoTBackendStack extends cdk.Stack {
     this.alexaLedHandler.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["ssm:GetParameter"],
-        resources: [
-          `arn:aws:ssm:${region}:${account}:parameter${GEMINI_API_KEY_PARAM}`,
-        ],
+        resources: [`arn:aws:ssm:${region}:${account}:parameter${GEMINI_API_KEY_PARAM}`],
       })
     );
 

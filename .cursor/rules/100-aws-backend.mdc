@@ -7,6 +7,8 @@ globs: ["aws/**/*"]
 
 ## 1. 共通ルール
 
+- **ESLint と Prettier を遵守すること。** `aws/` ディレクトリでは `npm run lint` および `npm run format:check` が通る状態を維持する。CI でもこれらを実行する。
+
 - 言語は TypeScript を使用し、厳格な型定義（`strict: true`）を遵守すること。
 - エラーハンドリングは必ず行い、CloudWatch Logs にトレース可能な情報を出力すること。
 - コスト最適化のため、AWSリソースは「永年無料枠」の範囲内に収まる設計を徹底すること（例: Secrets Manager ではなく SSM Parameter Store を使用）。

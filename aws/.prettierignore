@@ -1,0 +1,4 @@
+node_modules
+cdk.out
+package-lock.json
+*.md

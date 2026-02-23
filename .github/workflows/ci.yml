@@ -28,6 +28,14 @@ jobs:
         run: npm ci
         working-directory: aws
 
+      - name: Lint
+        run: npm run lint
+        working-directory: aws
+
+      - name: Format check
+        run: npm run format:check
+        working-directory: aws
+
       - name: Build
         run: npm run build
         working-directory: aws

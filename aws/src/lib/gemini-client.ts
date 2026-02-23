@@ -6,9 +6,9 @@ type Effect = (typeof VALID_EFFECTS)[number];
 
 /** IoT Core → ESP32 → WLED に渡す LED 制御パラメータ */
 export interface LedParams {
-  color: string;      // HEX カラーコード（例: "#ff6600"）
+  color: string; // HEX カラーコード（例: "#ff6600"）
   brightness: number; // 輝度 0〜255
-  effect: Effect;     // WLED エフェクト名
+  effect: Effect; // WLED エフェクト名
 }
 
 const SYSTEM_PROMPT = `あなたはスマート照明コントローラーです。
@@ -42,9 +42,7 @@ export async function fetchLedParams(naturalLanguage: string, apiKey: string): P
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      contents: [
-        { parts: [{ text: `${SYSTEM_PROMPT}\n\nユーザーの指示: ${naturalLanguage}` }] },
-      ],
+      contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\nユーザーの指示: ${naturalLanguage}` }] }],
       generationConfig: {
         responseMimeType: "application/json",
         temperature: 0.2,

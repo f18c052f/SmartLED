@@ -81,7 +81,9 @@ describe("fetchLedParams", () => {
       json: async () => ({ candidates: [] }),
     });
 
-    await expect(fetchLedParams("test", "key")).rejects.toThrow("Gemini API returned empty response");
+    await expect(fetchLedParams("test", "key")).rejects.toThrow(
+      "Gemini API returned empty response"
+    );
   });
 
   it("throws error when response JSON is invalid LED params", async () => {

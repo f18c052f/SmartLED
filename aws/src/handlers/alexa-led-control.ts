@@ -14,9 +14,7 @@ let iotDataClient: IoTDataPlaneClient | null = null;
 
 async function getIoTDataClient(): Promise<IoTDataPlaneClient> {
   if (iotDataClient) return iotDataClient;
-  const res = await iotClient.send(
-    new DescribeEndpointCommand({ endpointType: "iot:Data-ATS" })
-  );
+  const res = await iotClient.send(new DescribeEndpointCommand({ endpointType: "iot:Data-ATS" }));
   if (!res.endpointAddress) throw new Error("IoT Data endpoint not found");
   iotDataClient = new IoTDataPlaneClient({
     endpoint: `https://${res.endpointAddress}`,
