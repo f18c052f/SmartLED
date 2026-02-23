@@ -1,0 +1,7 @@
+# PlatformIO ビルド成果物
+.pio/
+.vscode/
+
+# 機密情報（証明書・認証情報）
+secrets/certs.h
+include/config.h
