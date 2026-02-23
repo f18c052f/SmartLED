@@ -1,11 +1,12 @@
 import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 import { IoTClient, DescribeEndpointCommand } from "@aws-sdk/client-iot";
 import { IoTDataPlaneClient, PublishCommand } from "@aws-sdk/client-iot-data-plane";
+import { fetchLedParams } from "../lib/gemini-client.js";
 
 const ssmClient = new SSMClient({});
 const iotClient = new IoTClient({});
 
-/** IoT Data Plane クライアント（エンドポイント取得後に初期化） */
+/** IoT Data Plane クライアント（エンドポイント取得後にキャッシュ） */
 let iotDataClient: IoTDataPlaneClient | null = null;
 
 async function getIoTDataClient(): Promise<IoTDataPlaneClient> {
@@ -20,11 +21,15 @@ async function getIoTDataClient(): Promise<IoTDataPlaneClient> {
   return iotDataClient;
 }
 
-/** Alexa からのリクエストペイロード型（将来拡張） */
+/** Alexa Custom Skill のリクエストペイロード型 */
 export interface AlexaRequest {
+  version?: string;
   request?: {
     type?: string;
-    intent?: { name?: string; slots?: Record<string, { value?: string }> };
+    intent?: {
+      name?: string;
+      slots?: Record<string, { name?: string; value?: string }>;
+    };
   };
   [key: string]: unknown;
 }
@@ -37,8 +42,8 @@ export interface LambdaResponse {
 }
 
 /**
- * Alexa Custom Skill / Smart Home Skill からのリクエストを処理し、
- * Gemini API で自然言語を解釈 → IoT Core (MQTT) へ LED 制御メッセージをパブリッシュする。
+ * Alexa Custom Skill からのリクエストを処理する。
+ * 自然言語 → Gemini API → LED パラメータ → IoT Core (MQTT) の順で処理する。
  */
 export const handler = async (event: AlexaRequest): Promise<LambdaResponse> => {
   try {
@@ -50,25 +55,35 @@ export const handler = async (event: AlexaRequest): Promise<LambdaResponse> => {
       return buildResponse(500, { message: "Internal Server Error" });
     }
 
+    // LaunchRequest / SessionEndedRequest は処理不要
+    const requestType = event?.request?.type;
+    if (requestType === "LaunchRequest" || requestType === "SessionEndedRequest") {
+      console.log("Received non-intent request type:", requestType);
+      return buildResponse(200, { message: "OK" });
+    }
+
+    // Alexa インテントから自然言語テキストを抽出
+    const naturalLanguage = extractNaturalLanguageFromAlexa(event);
+    if (!naturalLanguage) {
+      console.warn("No phrase found in Alexa request:", JSON.stringify(event.request));
+      return buildResponse(400, { message: "Bad Request: no phrase provided" });
+    }
+    console.log("Natural language input:", naturalLanguage);
+
     // SSM Parameter Store から Gemini API キーを取得（無料枠対応）
-    const command = new GetParameterCommand({
-      Name: paramName,
-      WithDecryption: true,
-    });
-    const response = await ssmClient.send(command);
-    const apiKey = response.Parameter?.Value;
+    const ssmResponse = await ssmClient.send(
+      new GetParameterCommand({ Name: paramName, WithDecryption: true })
+    );
+    const apiKey = ssmResponse.Parameter?.Value;
 
     if (!apiKey) {
       console.error("API Key not found in SSM Parameter Store");
       return buildResponse(500, { message: "Internal Server Error" });
     }
 
-    // TODO: Phase 2 で実装 - Alexa インテントから自然言語を抽出し、Gemini API に渡す
-    const naturalLanguage = extractNaturalLanguageFromAlexa(event);
-    console.log("Natural language input:", naturalLanguage);
-
-    // TODO: Phase 2 で実装 - Gemini API で LED パラメータ（色・エフェクト・輝度）を取得
-    const ledParams = { color: "#ffffff", brightness: 100, effect: "solid" };
+    // Gemini API で自然言語を解釈し、LED パラメータ（色・輝度・エフェクト）を取得
+    const ledParams = await fetchLedParams(naturalLanguage, apiKey);
+    console.log("LED params from Gemini:", JSON.stringify(ledParams));
 
     // IoT Core (MQTT) へ制御メッセージをパブリッシュ
     const topic = `${topicPrefix}/control`;
@@ -81,25 +96,25 @@ export const handler = async (event: AlexaRequest): Promise<LambdaResponse> => {
       })
     );
 
-    console.log("Published to topic:", topic);
+    console.log("Published LED params to topic:", topic);
 
-    return buildResponse(200, {
-      message: "Success",
-      topic,
-    });
+    return buildResponse(200, { message: "Success", topic, ledParams });
   } catch (error) {
     console.error("Error processing request:", error);
     return buildResponse(500, { message: "Internal Server Error" });
   }
 };
 
-/** Alexa リクエストから自然言語テキストを抽出（雛形） */
-function extractNaturalLanguageFromAlexa(event: AlexaRequest): string {
+/**
+ * Alexa Custom Skill のインテントリクエストから自然言語テキストを抽出する。
+ * スロット名 "phrase" または "utterance" を検索する。
+ */
+export function extractNaturalLanguageFromAlexa(event: AlexaRequest): string {
   const intent = event?.request?.intent;
   if (!intent?.slots) return "";
 
   const slot = intent.slots["phrase"] ?? intent.slots["utterance"];
-  return (slot?.value as string) ?? "";
+  return slot?.value ?? "";
 }
 
 function buildResponse(statusCode: number, body: object): LambdaResponse {
