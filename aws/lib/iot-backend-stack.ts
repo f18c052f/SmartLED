@@ -10,6 +10,12 @@ const GEMINI_API_KEY_PARAM = "/smartled/gemini-api-key";
 /** IoT Core の LED 制御用 MQTT トピックプレフィックス */
 const IOT_TOPIC_PREFIX = "smartled/esp32";
 
+/**
+ * CDK コンテキストで Alexa Skill ID を渡す。
+ * 例: cdk deploy -c alexaSkillId=amzn1.ask.skill.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+ */
+const CONTEXT_ALEXA_SKILL_ID = "alexaSkillId";
+
 export class IoTBackendStack extends cdk.Stack {
   public readonly alexaLedHandler: lambdaNodejs.NodejsFunction;
 
@@ -60,5 +66,14 @@ export class IoTBackendStack extends cdk.Stack {
         resources: [`arn:aws:iot:${region}:${account}:topic/${IOT_TOPIC_PREFIX}/*`],
       })
     );
+
+    // Alexa スキルからのみ Lambda を呼び出し可能にする（Skill ID をコンテキストで指定）
+    const alexaSkillId = this.node.tryGetContext(CONTEXT_ALEXA_SKILL_ID) as string | undefined;
+    if (alexaSkillId) {
+      this.alexaLedHandler.addPermission("AlexaSkillInvoke", {
+        principal: new iam.ServicePrincipal("alexa-appkit.amazon.com"),
+        eventSourceToken: alexaSkillId,
+      });
+    }
   }
 }

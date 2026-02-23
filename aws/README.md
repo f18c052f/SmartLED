@@ -35,3 +35,14 @@ Alexa → Lambda → Gemini API → IoT Core (MQTT) → ESP32 のフローを実
 | `npx cdk synth` | CloudFormation テンプレートを生成 |
 | `npx cdk deploy` | スタックをデプロイ |
 | `npx cdk diff` | デプロイ済みスタックとの差分を表示 |
+
+## Phase 3: Alexa スキル連携
+
+Alexa Developer Console でスキルを作成したら、**Skill ID**（`amzn1.ask.skill.xxxxxxxx-...`）を控え、デプロイ時にコンテキストで渡す。
+
+```bash
+npx cdk deploy -c alexaSkillId=amzn1.ask.skill.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+```
+
+これで Lambda のリソースポリシーに「このスキルからのみ Invoke を許可」が追加される。  
+Skill ID を渡さずにデプロイした場合は、Alexa からの呼び出し許可は付与されない（既存の許可は変更されない）。
