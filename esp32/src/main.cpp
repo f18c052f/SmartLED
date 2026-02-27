@@ -52,10 +52,23 @@ void connectWiFi() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   unsigned long start = millis();
+  unsigned long lastLog = 0;
   while (WiFi.status() != WL_CONNECTED) {
     if (millis() - start > 20000) {
-      Serial.println("[WiFi] Timeout. Restarting...");
+      Serial.printf("[WiFi] Timeout (last status=%d). Restarting...\n", WiFi.status());
       ESP.restart();
+    }
+    // 3秒ごとに状態を表示（原因切り分け用）
+    if (millis() - lastLog >= 3000) {
+      lastLog = millis();
+      int s = WiFi.status();
+      const char* msg = (s == WL_IDLE_STATUS) ? "IDLE" :
+                        (s == WL_NO_SSID_AVAIL) ? "NO_SSID_AVAIL (SSID未検出)" :
+                        (s == WL_SCAN_COMPLETED) ? "SCAN_COMPLETED" :
+                        (s == WL_CONNECT_FAILED) ? "CONNECT_FAILED (パスワード誤り?)" :
+                        (s == WL_CONNECTION_LOST) ? "CONNECTION_LOST" :
+                        (s == WL_DISCONNECTED) ? "DISCONNECTED" : "OTHER";
+      Serial.printf("[WiFi] status=%d (%s)\n", s, msg);
     }
     delay(500);
   }
