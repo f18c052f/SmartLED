@@ -39,7 +39,7 @@ export class IoTBackendStack extends cdk.Stack {
     this.alexaLedHandler = new lambdaNodejs.NodejsFunction(this, "AlexaLedHandler", {
       entry: "src/handlers/alexa-led-control.ts",
       handler: "handler",
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       environment: {
@@ -49,7 +49,7 @@ export class IoTBackendStack extends cdk.Stack {
       bundling: {
         minify: true,
         sourceMap: true,
-        target: "node20",
+        target: "node22",
       },
     });
 
@@ -117,13 +117,13 @@ export class IoTBackendStack extends cdk.Stack {
     const certManagerFn = new lambdaNodejs.NodejsFunction(this, "CertManager", {
       entry: "src/handlers/iot-cert-manager.ts",
       handler: "handler",
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       timeout: cdk.Duration.seconds(60),
       memorySize: 128,
       bundling: {
         minify: true,
         sourceMap: true,
-        target: "node20",
+        target: "node22",
       },
     });
 
