@@ -45,6 +45,8 @@
 project-root/
 ├── .cursor/               # Cursorエディタ用設定・ルール
 ├── docs/                  # 仕様書、設計ドキュメント
+│   ├── diagrams/          # システム構成図など（.drawio / エクスポート画像）
+│   └── requirements.md
 ├── aws/                   # AWSクラウドバックエンド (CDK / Lambda)
 │   ├── bin/               # CDKエントリーポイント
 │   ├── lib/               # CDKスタック定義
