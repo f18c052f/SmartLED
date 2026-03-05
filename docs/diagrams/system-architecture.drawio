@@ -1,18 +1,16 @@
 <mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36" version="29.6.0">
   <diagram name="ページ-1" id="QwFHD6nFKaCyPwTXWxFR">
-    <mxGraphModel dx="3203" dy="518" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="1507" dy="-180" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="2uMYdZRBQ_CG6NZwCzVQ-40" edge="1" parent="1" style="endArrow=classic;html=1;rounded=0;fontSize=12;startSize=8;endSize=8;curved=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;" target="2uMYdZRBQ_CG6NZwCzVQ-16" value="">
+        <mxCell id="v7Sw5MeTd356P593DM9F-1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#FFFFFF;" value="" vertex="1">
+          <mxGeometry height="596" width="1222" x="84" y="955" as="geometry" />
+        </mxCell>
+        <mxCell id="2uMYdZRBQ_CG6NZwCzVQ-40" edge="1" parent="1" style="endArrow=classic;html=1;rounded=0;fontSize=12;startSize=8;endSize=8;curved=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;" target="2uMYdZRBQ_CG6NZwCzVQ-16" value="Get Parameters">
           <mxGeometry relative="1" as="geometry">
             <mxPoint x="724" y="1155" as="sourcePoint" />
             <mxPoint x="1067" y="1400" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="2uMYdZRBQ_CG6NZwCzVQ-41" connectable="0" parent="2uMYdZRBQ_CG6NZwCzVQ-40" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;" value="Get Parameter" vertex="1">
-          <mxGeometry relative="1" x="-0.7597" y="-3" as="geometry">
-            <mxPoint x="-5" y="61" as="offset" />
           </mxGeometry>
         </mxCell>
         <mxCell id="2uMYdZRBQ_CG6NZwCzVQ-1" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=#232F3E;fillColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.user;" value="User" vertex="1">
