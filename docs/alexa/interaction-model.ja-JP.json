@@ -1,0 +1,68 @@
+{
+  "_meta": {
+    "description": "Alexa Developer Console に登録する Custom Skill の対話モデル。日本語ロケール (ja-JP) 用。",
+    "howToApply": "Alexa Developer Console -> 対象スキル -> Build -> Interaction Model -> JSON Editor に貼り付けて Save Model -> Build Model。",
+    "intentsCovered": [
+      "LightControlIntent (既存・自然言語シーン指定)",
+      "PowerOnIntent (新設・AUTO 復帰)",
+      "PowerOffIntent (新設・STANDBY 強制)"
+    ],
+    "specs": "docs/requirements.md §7-§9 / .cursor/rules/100-aws-backend.mdc §5"
+  },
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "スマートエルイーディー",
+      "intents": [
+        { "name": "AMAZON.CancelIntent", "samples": [] },
+        { "name": "AMAZON.HelpIntent", "samples": [] },
+        { "name": "AMAZON.StopIntent", "samples": [] },
+        { "name": "AMAZON.NavigateHomeIntent", "samples": [] },
+        {
+          "name": "LightControlIntent",
+          "slots": [
+            {
+              "name": "phrase",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "{phrase}",
+            "ライトを {phrase}",
+            "{phrase} にして",
+            "照明を {phrase}",
+            "ライトを {phrase} にして",
+            "ライトを {phrase} にしてください"
+          ]
+        },
+        {
+          "name": "PowerOnIntent",
+          "slots": [],
+          "samples": [
+            "ライトをつけて",
+            "電気をつけて",
+            "明かりをつけて",
+            "照明をつけて",
+            "ライトオン",
+            "自動にして",
+            "オートにして",
+            "自動モードに戻して"
+          ]
+        },
+        {
+          "name": "PowerOffIntent",
+          "slots": [],
+          "samples": [
+            "ライトを消して",
+            "電気を消して",
+            "明かりを消して",
+            "照明を消して",
+            "ライトオフ",
+            "おやすみ",
+            "消灯して"
+          ]
+        }
+      ],
+      "types": []
+    }
+  }
+}
