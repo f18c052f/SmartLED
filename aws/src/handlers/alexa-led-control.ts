@@ -1,11 +1,11 @@
 import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 import { IoTClient, DescribeEndpointCommand } from "@aws-sdk/client-iot";
 import { IoTDataPlaneClient, PublishCommand } from "@aws-sdk/client-iot-data-plane";
-import { fetchLedParams } from "../lib/gemini-client.js";
+import { fetchLedParams, type LedParams } from "../lib/gemini-client.js";
 import {
   AlexaRequest,
   AlexaResponse,
-  extractNaturalLanguageFromAlexa,
+  classifyAlexaIntent,
   buildAlexaResponse,
 } from "../lib/alexa-request.js";
 
@@ -13,6 +13,9 @@ export type { AlexaRequest } from "../lib/alexa-request.js";
 
 const ssmClient = new SSMClient({});
 const iotClient = new IoTClient({});
+
+/** ESP32 が認識する制御モード */
+type Mode = "AUTO" | "MANUAL" | "STANDBY";
 
 /** IoT Data Plane クライアント（エンドポイント取得後にキャッシュ） */
 let iotDataClient: IoTDataPlaneClient | null = null;
@@ -35,15 +38,51 @@ function log(level: "INFO" | "WARN" | "ERROR", message: string, data?: Record<st
   else console.log(entry);
 }
 
+async function publishToTopic(topic: string, payload: object): Promise<void> {
+  const dataClient = await getIoTDataClient();
+  await dataClient.send(
+    new PublishCommand({
+      topic,
+      payload: Buffer.from(JSON.stringify(payload)),
+      qos: 0,
+    })
+  );
+}
+
+async function publishControl(topicPrefix: string, params: LedParams): Promise<void> {
+  await publishToTopic(`${topicPrefix}/control`, params);
+}
+
+async function publishMode(topicPrefix: string, mode: Mode): Promise<void> {
+  await publishToTopic(`${topicPrefix}/mode`, { mode });
+}
+
+async function getGeminiApiKey(paramName: string): Promise<string> {
+  const ssmResponse = await ssmClient.send(
+    new GetParameterCommand({ Name: paramName, WithDecryption: true })
+  );
+  const apiKey = ssmResponse.Parameter?.Value;
+  if (!apiKey) {
+    throw new Error("API Key not found in SSM Parameter Store");
+  }
+  return apiKey;
+}
+
 /**
  * Alexa Custom Skill からのリクエストを処理する。
- * 自然言語 → Gemini API → LED パラメータ → IoT Core (MQTT) の順で処理する。
+ *
+ * インテント別の振る舞い（`requirements.md` §7-§9 準拠）:
+ *   - LaunchRequest        → ウェルカム応答（セッション継続）
+ *   - SessionEndedRequest  → 空応答（セッション終了）
+ *   - PowerOnIntent        → mode publish: AUTO（PIRが再び有効に）
+ *   - PowerOffIntent       → mode publish: STANDBY（強制消灯）
+ *   - LightControlIntent   → Gemini → control publish + mode publish: MANUAL
+ *   - その他               → 聞き返し応答
  */
 export const handler = async (event: AlexaRequest): Promise<AlexaResponse> => {
-  const requestType = event?.request?.type;
+  const command = classifyAlexaIntent(event);
 
-  // スキル起動時のウェルカムメッセージ
-  if (requestType === "LaunchRequest") {
+  if (command.kind === "launch") {
     log("INFO", "Received LaunchRequest");
     return buildAlexaResponse(
       "スマートLEDへようこそ。照明の色や明るさを言葉で指定してください。",
@@ -51,8 +90,7 @@ export const handler = async (event: AlexaRequest): Promise<AlexaResponse> => {
     );
   }
 
-  // セッション終了は応答不要（Alexaプロトコルの仕様）
-  if (requestType === "SessionEndedRequest") {
+  if (command.kind === "sessionEnded") {
     log("INFO", "Received SessionEndedRequest");
     return buildAlexaResponse("", true);
   }
@@ -66,43 +104,44 @@ export const handler = async (event: AlexaRequest): Promise<AlexaResponse> => {
       return buildAlexaResponse("設定エラーが発生しました。管理者に確認してください。");
     }
 
-    // Alexa インテントから自然言語テキストを抽出
-    const naturalLanguage = extractNaturalLanguageFromAlexa(event);
-    if (!naturalLanguage) {
-      log("WARN", "No phrase found in Alexa request", { request: event.request });
-      return buildAlexaResponse("すみません、うまく聞き取れませんでした。もう一度お試しください。");
+    switch (command.kind) {
+      case "powerOn": {
+        log("INFO", "PowerOnIntent received");
+        await publishMode(topicPrefix, "AUTO");
+        log("INFO", "Published mode=AUTO");
+        return buildAlexaResponse("はい、ライトを自動にしました。");
+      }
+
+      case "powerOff": {
+        log("INFO", "PowerOffIntent received");
+        await publishMode(topicPrefix, "STANDBY");
+        log("INFO", "Published mode=STANDBY");
+        return buildAlexaResponse("はい、ライトを消しました。");
+      }
+
+      case "scene": {
+        log("INFO", "LightControlIntent received", { phrase: command.phrase });
+
+        const apiKey = await getGeminiApiKey(paramName);
+        const ledParams = await fetchLedParams(command.phrase, apiKey);
+        log("INFO", "LED params fetched from Gemini", { ledParams });
+
+        // シーン指定は MANUAL に強制遷移しつつ control を反映する（§7.3 準拠）
+        await publishControl(topicPrefix, ledParams);
+        await publishMode(topicPrefix, "MANUAL");
+        log("INFO", "Published control + mode=MANUAL", { ledParams });
+
+        return buildAlexaResponse("はい、照明を調整しました。");
+      }
+
+      case "unknown":
+      default: {
+        log("WARN", "Unknown or empty intent", { request: event.request });
+        return buildAlexaResponse(
+          "すみません、うまく聞き取れませんでした。もう一度お試しください。"
+        );
+      }
     }
-    log("INFO", "Natural language input received", { naturalLanguage });
-
-    // SSM Parameter Store から Gemini API キーを取得（無料枠対応）
-    const ssmResponse = await ssmClient.send(
-      new GetParameterCommand({ Name: paramName, WithDecryption: true })
-    );
-    const apiKey = ssmResponse.Parameter?.Value;
-
-    if (!apiKey) {
-      log("ERROR", "API Key not found in SSM Parameter Store", { paramName });
-      return buildAlexaResponse("APIキーの取得に失敗しました。管理者に確認してください。");
-    }
-
-    // Gemini API で自然言語を解釈し、LED パラメータ（色・輝度・エフェクト）を取得
-    const ledParams = await fetchLedParams(naturalLanguage, apiKey);
-    log("INFO", "LED params fetched from Gemini", { ledParams });
-
-    // IoT Core (MQTT) へ制御メッセージをパブリッシュ
-    const topic = `${topicPrefix}/control`;
-    const dataClient = await getIoTDataClient();
-    await dataClient.send(
-      new PublishCommand({
-        topic,
-        payload: Buffer.from(JSON.stringify(ledParams)),
-        qos: 0,
-      })
-    );
-
-    log("INFO", "Published LED params to IoT Core", { topic, ledParams });
-
-    return buildAlexaResponse("はい、照明を調整しました。");
   } catch (error) {
     log("ERROR", "Unhandled error processing request", {
       errorMessage: error instanceof Error ? error.message : String(error),

@@ -100,12 +100,24 @@ export class IoTBackendStack extends cdk.Stack {
           {
             Effect: "Allow",
             Action: ["iot:Subscribe"],
-            Resource: `arn:aws:iot:${region}:${account}:topicfilter/${IOT_TOPIC_PREFIX}/control`,
+            Resource: [
+              `arn:aws:iot:${region}:${account}:topicfilter/${IOT_TOPIC_PREFIX}/control`,
+              `arn:aws:iot:${region}:${account}:topicfilter/${IOT_TOPIC_PREFIX}/mode`,
+            ],
           },
           {
             Effect: "Allow",
             Action: ["iot:Receive"],
-            Resource: `arn:aws:iot:${region}:${account}:topic/${IOT_TOPIC_PREFIX}/control`,
+            Resource: [
+              `arn:aws:iot:${region}:${account}:topic/${IOT_TOPIC_PREFIX}/control`,
+              `arn:aws:iot:${region}:${account}:topic/${IOT_TOPIC_PREFIX}/mode`,
+            ],
+          },
+          {
+            // ESP32 → Cloud: 状態通知（mode/lastTrigger/scene）を publish するため
+            Effect: "Allow",
+            Action: ["iot:Publish"],
+            Resource: `arn:aws:iot:${region}:${account}:topic/${IOT_TOPIC_PREFIX}/state`,
           },
         ],
       },
@@ -171,15 +183,25 @@ export class IoTBackendStack extends cdk.Stack {
     });
     new cdk.CfnOutput(this, "CertPemParamName", {
       value: "/smartled/iot/cert-pem",
-      description: "証明書 PEM の SSM パラメータ名（取得: aws ssm get-parameter --name /smartled/iot/cert-pem）",
+      description:
+        "証明書 PEM の SSM パラメータ名（取得: aws ssm get-parameter --name /smartled/iot/cert-pem）",
     });
     new cdk.CfnOutput(this, "PrivateKeyParamName", {
       value: "/smartled/iot/private-key",
-      description: "秘密鍵の SSM パラメータ名（取得: aws ssm get-parameter --name /smartled/iot/private-key --with-decryption）",
+      description:
+        "秘密鍵の SSM パラメータ名（取得: aws ssm get-parameter --name /smartled/iot/private-key --with-decryption）",
     });
     new cdk.CfnOutput(this, "MqttTopic", {
       value: `${IOT_TOPIC_PREFIX}/control`,
-      description: "ESP32 がサブスクライブする MQTT トピック",
+      description: "ESP32 がサブスクライブする MQTT トピック（シーン指定）",
+    });
+    new cdk.CfnOutput(this, "MqttTopicMode", {
+      value: `${IOT_TOPIC_PREFIX}/mode`,
+      description: "ESP32 がサブスクライブする MQTT トピック（モード遷移）",
+    });
+    new cdk.CfnOutput(this, "MqttTopicState", {
+      value: `${IOT_TOPIC_PREFIX}/state`,
+      description: "ESP32 が publish する MQTT トピック（状態通知）",
     });
   }
 }

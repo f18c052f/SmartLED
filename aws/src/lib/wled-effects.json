@@ -1,0 +1,62 @@
+{
+  "_meta": {
+    "description": "Lambda(Gemini)とESP32が共通参照するWLEDエフェクト辞書。idはWLEDのFX_MODE_*に対応。",
+    "wledVersion": "0.14.x ベース",
+    "source": "WLED公式 wled00/FX.h と Web UI 表示名から手動選定（30件）",
+    "verification": "新規追加時は ESP32 実機の `GET http://<wled-ip>/json/eff` を取得して id/name の整合を必ず確認すること",
+    "owner": "aws/ と esp32/ の双方が参照。スキーマ変更は同一PRで両側を更新すること",
+    "schema": {
+      "id": "integer (WLED FX_MODE_*)",
+      "name": "string (WLED公式の表示名)",
+      "alias": "string (Lambda/MQTTで利用する短いキーワード・小文字)",
+      "tags": "string[] (Geminiプロンプトでマッチング用に使う日本語キーワード)"
+    }
+  },
+  "effects": [
+    { "id": 0, "name": "Solid", "alias": "solid", "tags": ["静的", "集中", "読書", "映画"] },
+    { "id": 1, "name": "Blink", "alias": "blink", "tags": ["点滅", "注意", "通知"] },
+    { "id": 2, "name": "Breathe", "alias": "breathe-old", "tags": ["呼吸", "ゆっくり"] },
+    { "id": 8, "name": "Wipe", "alias": "wipe", "tags": ["流れる", "塗り込み"] },
+    { "id": 9, "name": "Rainbow", "alias": "rainbow", "tags": ["虹", "パーティー", "カラフル"] },
+    {
+      "id": 11,
+      "name": "Rainbow Cycle",
+      "alias": "rainbow-cycle",
+      "tags": ["虹", "循環", "カラフル"]
+    },
+    { "id": 12, "name": "Fade", "alias": "fade", "tags": ["柔らか", "就寝", "やさしい"] },
+    { "id": 14, "name": "Breathe", "alias": "breath", "tags": ["呼吸", "リラックス", "瞑想"] },
+    { "id": 15, "name": "Running", "alias": "running", "tags": ["流れる", "動き"] },
+    { "id": 20, "name": "Sparkle", "alias": "sparkle", "tags": ["きらきら", "輝き"] },
+    { "id": 22, "name": "Strobe", "alias": "strobe", "tags": ["ストロボ", "クラブ", "閃光"] },
+    { "id": 23, "name": "Strobe Mega", "alias": "strobe-mega", "tags": ["ストロボ", "派手"] },
+    { "id": 38, "name": "Chase Rainbow", "alias": "chase-rainbow", "tags": ["追いかけ", "虹"] },
+    { "id": 40, "name": "Pride 2015", "alias": "pride", "tags": ["プライド", "虹", "華やか"] },
+    { "id": 41, "name": "Juggle", "alias": "juggle", "tags": ["跳ねる", "活発"] },
+    { "id": 44, "name": "Colorwaves", "alias": "colorwaves", "tags": ["波", "穏やか", "海"] },
+    { "id": 45, "name": "Bpm", "alias": "bpm", "tags": ["音楽", "ビート", "ダンス"] },
+    { "id": 57, "name": "Candy Cane", "alias": "candy-cane", "tags": ["クリスマス", "キャンディ"] },
+    { "id": 58, "name": "Sunrise", "alias": "sunrise", "tags": ["朝", "日の出", "目覚め"] },
+    { "id": 65, "name": "Glitter", "alias": "glitter", "tags": ["きらめき", "華やか"] },
+    { "id": 66, "name": "Fire 2012", "alias": "fire", "tags": ["炎", "暖炉", "暖色"] },
+    {
+      "id": 67,
+      "name": "Colortwinkles",
+      "alias": "colortwinkles",
+      "tags": ["瞬き", "イルミネーション"]
+    },
+    { "id": 68, "name": "Twinklefox", "alias": "twinkle", "tags": ["星空", "就寝", "穏やか"] },
+    { "id": 69, "name": "Twinklecat", "alias": "twinklecat", "tags": ["星空", "メルヘン"] },
+    { "id": 73, "name": "Meteor", "alias": "meteor", "tags": ["流星", "宇宙"] },
+    {
+      "id": 74,
+      "name": "Meteor Smooth",
+      "alias": "meteor-smooth",
+      "tags": ["流星", "宇宙", "滑らか"]
+    },
+    { "id": 80, "name": "Police", "alias": "police", "tags": ["パトカー", "警告", "赤青"] },
+    { "id": 88, "name": "Heartbeat", "alias": "heartbeat", "tags": ["心拍", "鼓動"] },
+    { "id": 89, "name": "Pacifica", "alias": "pacifica", "tags": ["海", "波", "癒し", "青"] },
+    { "id": 90, "name": "Candle Multi", "alias": "candle", "tags": ["ろうそく", "暖色", "ゆらぎ"] }
+  ]
+}

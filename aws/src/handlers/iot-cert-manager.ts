@@ -65,16 +65,33 @@ export const handler = async (event: CertManagerEvent): Promise<CertManagerRespo
       );
 
       await ssmClient.send(
-        new PutParameterCommand({ Name: SSM_CERT_PEM, Value: certPem, Type: "String", Overwrite: true })
+        new PutParameterCommand({
+          Name: SSM_CERT_PEM,
+          Value: certPem,
+          Type: "String",
+          Overwrite: true,
+        })
       );
       await ssmClient.send(
-        new PutParameterCommand({ Name: SSM_PRIVATE_KEY, Value: privateKey, Type: "SecureString", Overwrite: true })
+        new PutParameterCommand({
+          Name: SSM_PRIVATE_KEY,
+          Value: privateKey,
+          Type: "SecureString",
+          Overwrite: true,
+        })
       );
       await ssmClient.send(
-        new PutParameterCommand({ Name: SSM_CERT_ARN, Value: certArn, Type: "String", Overwrite: true })
+        new PutParameterCommand({
+          Name: SSM_CERT_ARN,
+          Value: certArn,
+          Type: "String",
+          Overwrite: true,
+        })
       );
 
-      console.log(JSON.stringify({ level: "INFO", message: "Certificate created", certId, certArn }));
+      console.log(
+        JSON.stringify({ level: "INFO", message: "Certificate created", certId, certArn })
+      );
 
       return {
         PhysicalResourceId: certId,
@@ -83,7 +100,12 @@ export const handler = async (event: CertManagerEvent): Promise<CertManagerRespo
     }
 
     case "Update":
-      console.log(JSON.stringify({ level: "INFO", message: "Update: no-op (certificate rotation not supported)" }));
+      console.log(
+        JSON.stringify({
+          level: "INFO",
+          message: "Update: no-op (certificate rotation not supported)",
+        })
+      );
       return { PhysicalResourceId: event.PhysicalResourceId! };
 
     case "Delete": {
@@ -94,21 +116,33 @@ export const handler = async (event: CertManagerEvent): Promise<CertManagerRespo
         const param = await ssmClient.send(new GetParameterCommand({ Name: SSM_CERT_ARN }));
         certArn = param.Parameter!.Value!;
       } catch {
-        console.log(JSON.stringify({ level: "WARN", message: "SSM parameter not found, skipping cert cleanup" }));
+        console.log(
+          JSON.stringify({
+            level: "WARN",
+            message: "SSM parameter not found, skipping cert cleanup",
+          })
+        );
         return { PhysicalResourceId: certId };
       }
 
       try {
         await iotClient.send(new DetachPolicyCommand({ policyName: PolicyName, target: certArn }));
       } catch {
-        console.log(JSON.stringify({ level: "WARN", message: "DetachPolicy skipped (already detached)" }));
+        console.log(
+          JSON.stringify({ level: "WARN", message: "DetachPolicy skipped (already detached)" })
+        );
       }
       try {
         await iotClient.send(
           new DetachThingPrincipalCommand({ thingName: ThingName, principal: certArn })
         );
       } catch {
-        console.log(JSON.stringify({ level: "WARN", message: "DetachThingPrincipal skipped (already detached)" }));
+        console.log(
+          JSON.stringify({
+            level: "WARN",
+            message: "DetachThingPrincipal skipped (already detached)",
+          })
+        );
       }
 
       await iotClient.send(

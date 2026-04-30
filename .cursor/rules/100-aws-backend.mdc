@@ -115,3 +115,131 @@ export class IoTBackendStack extends Construct {
   }
 }
 ```
+
+---
+
+## 4. Gemini API 連携: WLED エフェクトのグラウンディング規約
+
+### 4.1 真実のソース
+
+- WLED のエフェクト ID と名前のマッピングは **`aws/src/lib/wled-effects.json`** を唯一の真実のソースとする。
+- Gemini の System Prompt にはこの JSON から `id` / `name` / `tags` を埋め込み、列挙外の効果が選ばれないようにする。
+
+### 4.2 Structured Output (`responseSchema`) の強制
+
+Gemini API 呼び出し時は **必ず `generationConfig.responseSchema`** を指定し、`effectId` を JSON Schema の `enum` で許可リストに制約する。これにより列挙外の値が文法レベルで出力されない。
+
+#### ✅ Good Example
+
+```typescript
+import wledEffects from "./wled-effects.json";
+
+const allowedEffectIds = wledEffects.map((e) => e.id);
+
+const responseSchema = {
+  type: "object",
+  properties: {
+    color:      { type: "string", pattern: "^#[0-9a-f]{6}$" },
+    brightness: { type: "integer", minimum: 0, maximum: 255 },
+    effectId:   { type: "integer", enum: allowedEffectIds },
+    effect:     { type: "string" }, // 名前は参考情報（必須だがバリデーションは ID 側で担保）
+  },
+  required: ["color", "brightness", "effectId", "effect"],
+};
+
+const body = {
+  contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\nユーザーの指示: ${naturalLanguage}` }] }],
+  generationConfig: {
+    responseMimeType: "application/json",
+    responseSchema,
+    temperature: 0.2,
+  },
+};
+```
+
+#### ❌ Bad Example
+
+```typescript
+// 悪い例: responseSchema を指定せず、プロンプトの注意書きだけで JSON 形式を強制している
+//         Gemini が稀にコードフェンスや余計な解説を返し、パース失敗 → 5xx を誘発する
+const body = {
+  contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\n指示: ${naturalLanguage}` }] }],
+  generationConfig: { temperature: 0.2 },
+};
+```
+
+### 4.3 受信側バリデーション（二段防衛）
+
+- `isLedParams()` の型ガードでも **`effectId ∈ allowedEffectIds`** を必ず再検証する（Gemini のスキーマ違反・モデル切替時の保険）。
+- `effect`（名前文字列）はログ用途のみ。`effectId` を真実とする。
+
+---
+
+## 5. Alexa インテント設計
+
+Custom Skill 内で以下 3 つのインテントをサポートする。Smart Home Skill への移行は将来課題。
+
+| インテント | 用途 | 振る舞い |
+|------------|------|----------|
+| `LightControlIntent` | 自然言語によるシーン指定 | Gemini → `smartled/esp32/control` へ publish + `mode=MANUAL` を `smartled/esp32/mode` へ publish |
+| `PowerOnIntent`  | 「ライトをつけて」「自動にして」 | `smartled/esp32/mode` に `{"mode":"AUTO"}` を publish（control へは publish しない） |
+| `PowerOffIntent` | 「ライトを消して」「電気を消して」 | `smartled/esp32/mode` に `{"mode":"STANDBY"}` を publish |
+
+#### ✅ Good Example: インテントごとの分岐とトピック振り分け
+
+```typescript
+type AlexaCommand =
+  | { kind: "scene"; phrase: string }
+  | { kind: "powerOn" }
+  | { kind: "powerOff" }
+  | { kind: "unknown" };
+
+export function classifyAlexaIntent(event: AlexaRequest): AlexaCommand {
+  const intentName = event?.request?.intent?.name;
+  switch (intentName) {
+    case "PowerOnIntent":  return { kind: "powerOn" };
+    case "PowerOffIntent": return { kind: "powerOff" };
+    case "LightControlIntent": {
+      const phrase = extractNaturalLanguageFromAlexa(event);
+      return phrase ? { kind: "scene", phrase } : { kind: "unknown" };
+    }
+    default: return { kind: "unknown" };
+  }
+}
+
+// handler 内
+const cmd = classifyAlexaIntent(event);
+switch (cmd.kind) {
+  case "powerOn":
+    await publishMode("AUTO");
+    return buildAlexaResponse("はい、ライトを自動にしました。");
+  case "powerOff":
+    await publishMode("STANDBY");
+    return buildAlexaResponse("はい、ライトを消しました。");
+  case "scene":
+    const ledParams = await fetchLedParams(cmd.phrase, apiKey);
+    await publishControl(ledParams);
+    await publishMode("MANUAL"); // シーン指定は MANUAL 確定（PIR を停止）
+    return buildAlexaResponse("はい、照明を調整しました。");
+  case "unknown":
+    return buildAlexaResponse("すみません、うまく聞き取れませんでした。");
+}
+```
+
+#### ❌ Bad Example
+
+```typescript
+// 悪い例: 全リクエストを LightControlIntent と仮定して Gemini に投げる
+//         「消して」のような単純命令でも Gemini を叩いてしまい、料金・遅延・誤動作の原因になる
+const phrase = extractNaturalLanguageFromAlexa(event);
+const ledParams = await fetchLedParams(phrase, apiKey);
+await publishControl(ledParams);
+```
+
+---
+
+## 6. MQTT publish 規約
+
+- トピックは `process.env.IOT_TOPIC_PREFIX` を基底にし、サブトピック名は **コード内定数** として管理する。
+- `control` / `mode` の publish は、`requirements.md` §9 のスキーマに厳密準拠する。スキーマ変更時は ESP32 側と同一 PR で対応すること。
+- IAM ポリシーは `iot:Publish` を `topic/${IOT_TOPIC_PREFIX}/*` に限定（既存規約のまま維持）。

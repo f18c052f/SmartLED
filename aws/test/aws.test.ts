@@ -1,5 +1,5 @@
 import * as cdk from "aws-cdk-lib";
-import { Template } from "aws-cdk-lib/assertions";
+import { Match, Template } from "aws-cdk-lib/assertions";
 import { IoTBackendStack } from "../lib/iot-backend-stack";
 
 const makeStack = () => {
@@ -21,7 +21,7 @@ describe("IoTBackendStack", () => {
   // -------------------------------------------------------------------------
   test("Alexa Lambda function is created with correct properties", () => {
     template.hasResourceProperties("AWS::Lambda::Function", {
-      Runtime: "nodejs20.x",
+      Runtime: "nodejs22.x",
       Timeout: 30,
       MemorySize: 256,
     });
@@ -38,27 +38,53 @@ describe("IoTBackendStack", () => {
   });
 
   // -------------------------------------------------------------------------
-  // IoT Policy
+  // IoT Policy: control + mode を Subscribe/Receive、state を Publish
   // -------------------------------------------------------------------------
-  test("IoT Policy is created with Connect / Subscribe / Receive permissions", () => {
-    template.resourceCountIs("AWS::IoT::Policy", 1);
+  test("IoT Policy allows Subscribe to control and mode topics", () => {
     template.hasResourceProperties("AWS::IoT::Policy", {
       PolicyName: "SmartLedEsp32Policy",
       PolicyDocument: {
-        Statement: [
-          {
-            Effect: "Allow",
-            Action: "iot:Connect",
-          },
-          {
+        Statement: Match.arrayWith([
+          Match.objectLike({
             Effect: "Allow",
             Action: ["iot:Subscribe"],
-          },
-          {
+            Resource: Match.arrayWith([
+              Match.stringLikeRegexp("topicfilter/smartled/esp32/control$"),
+              Match.stringLikeRegexp("topicfilter/smartled/esp32/mode$"),
+            ]),
+          }),
+        ]),
+      },
+    });
+  });
+
+  test("IoT Policy allows Receive on control and mode topics", () => {
+    template.hasResourceProperties("AWS::IoT::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
             Effect: "Allow",
             Action: ["iot:Receive"],
-          },
-        ],
+            Resource: Match.arrayWith([
+              Match.stringLikeRegexp("topic/smartled/esp32/control$"),
+              Match.stringLikeRegexp("topic/smartled/esp32/mode$"),
+            ]),
+          }),
+        ]),
+      },
+    });
+  });
+
+  test("IoT Policy allows ESP32 to Publish state topic", () => {
+    template.hasResourceProperties("AWS::IoT::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Effect: "Allow",
+            Action: ["iot:Publish"],
+            Resource: Match.stringLikeRegexp("topic/smartled/esp32/state$"),
+          }),
+        ]),
       },
     });
   });
@@ -68,7 +94,7 @@ describe("IoTBackendStack", () => {
   // -------------------------------------------------------------------------
   test("CertManager Lambda is created with correct timeout", () => {
     template.hasResourceProperties("AWS::Lambda::Function", {
-      Runtime: "nodejs20.x",
+      Runtime: "nodejs22.x",
       Timeout: 60,
       MemorySize: 128,
     });
@@ -77,9 +103,15 @@ describe("IoTBackendStack", () => {
   // -------------------------------------------------------------------------
   // CloudFormation 出力
   // -------------------------------------------------------------------------
-  test("CloudFormation outputs include MQTT topic and SSM param names", () => {
+  test("CloudFormation outputs include MQTT topics for all 3 directions", () => {
     template.hasOutput("MqttTopic", {
       Value: "smartled/esp32/control",
+    });
+    template.hasOutput("MqttTopicMode", {
+      Value: "smartled/esp32/mode",
+    });
+    template.hasOutput("MqttTopicState", {
+      Value: "smartled/esp32/state",
     });
     template.hasOutput("CertPemParamName", {
       Value: "/smartled/iot/cert-pem",

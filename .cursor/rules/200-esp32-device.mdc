@@ -43,16 +43,23 @@ globs: ["esp32/**/*"]
 
 ## 2. MQTTメッセージスキーマ（クラウドとのインターフェース契約）
 
-> ESP32 は Lambda が IoT Core へパブリッシュする以下の JSON を **唯一のインターフェース** として受信する。スキーマを勝手に変更・拡張してはならない。変更が必要な場合は `aws/` 側と同時に変更すること。
+> ESP32 は Lambda が IoT Core へパブリッシュする JSON を **唯一のインターフェース** として受信する。スキーマを勝手に変更・拡張してはならない。変更が必要な場合は `aws/` 側と同時に変更すること（`requirements.md` §9 が真実のソース）。
 
-- **サブスクライブトピック:** `smartled/esp32/control`
-- **ペイロードスキーマ:**
+### 2.1 サブスクライブ（受信）
+
+| トピック | 用途 |
+|----------|------|
+| `smartled/esp32/control` | シーン指定 |
+| `smartled/esp32/mode` | モード遷移指示 |
+
+#### `smartled/esp32/control` ペイロード
 
 ```json
 {
   "color": "#ff6600",
   "brightness": 128,
-  "effect": "solid"
+  "effect": "solid",
+  "effectId": 0
 }
 ```
 
@@ -60,13 +67,320 @@ globs: ["esp32/**/*"]
 |------------|------|------|
 | `color` | string | HEX カラーコード（`#rrggbb` 形式、小文字） |
 | `brightness` | integer | 0〜255（整数のみ。浮動小数点は許容しない） |
-| `effect` | string | `solid` / `fade` / `rainbow` / `sparkle` / `fire` / `twinkle` / `breath` のいずれか |
+| `effect` | string | 名前（ログ用途のみ・参考情報） |
+| `effectId` | integer | `aws/src/lib/wled-effects.json` の `id` 列挙値。**こちらを真実とする。** |
+
+- ESP32 側で `effect`（名前）→ `fxId`（数値）へのハードコードマッピングを実装してはならない。`effectId` を直接 WLED `/json/state` の `seg[0].fx` に渡す。
+
+#### `smartled/esp32/mode` ペイロード
+
+```json
+{ "mode": "AUTO" }
+```
+
+`mode` は `"AUTO" | "MANUAL" | "STANDBY"` のいずれか。それ以外は無視してログ出力する。
+
+### 2.2 パブリッシュ（送信）
+
+| トピック | 用途 |
+|----------|------|
+| `smartled/esp32/state` | ESP32 の現在状態通知（5 秒間隔または変化時、QoS 0） |
+
+```json
+{
+  "mode": "AUTO",
+  "lastTrigger": "PIR",
+  "motionAt": 1730000000,
+  "scene": { "color": "#ffa84a", "brightness": 204, "effectId": 0 }
+}
+```
 
 - 受信した JSON のパース失敗・未知フィールドは **静かに無視** せず、Serial ログへ出力して現状の LED 状態を維持すること。
 
 ---
 
-## 3. 認証情報とシークレット管理
+## 2.5. 制御モード State Machine（必須実装）
+
+`requirements.md` §7 の状態機械を必ず実装する。モードは ESP32 RAM 上で保持し、再起動時は `AUTO` で復帰。
+
+```cpp
+enum class Mode { AUTO, MANUAL, STANDBY };
+static Mode currentMode = Mode::AUTO;
+```
+
+### 遷移表（モード変化のすべての契機）
+
+| 契機 | AUTO | MANUAL | STANDBY |
+|------|------|--------|---------|
+| プッシュSW 短押し | →STANDBY | →STANDBY | →AUTO |
+| プッシュSW 長押し(2s) | →STANDBY | →STANDBY | （無効） |
+| MQTT `mode=AUTO` | （無変更） | →AUTO | →AUTO |
+| MQTT `mode=MANUAL` | →MANUAL | （無変更） | →MANUAL |
+| MQTT `mode=STANDBY` | →STANDBY | →STANDBY | （無変更） |
+| MQTT `control` 受信 | →MANUAL + 反映 | 反映のみ | →MANUAL + 反映 |
+| PIR HIGH | 既定シーンで点灯 | 無視（ログ） | 無視（ログ） |
+| PIR LOW + AUTO_OFF_MS 経過 | 消灯 | 無視 | 無視 |
+
+> モード遷移時は必ず `smartled/esp32/state` をパブリッシュすること（後段の運用監視に必須）。
+
+---
+
+## 3. 省電力設計と入力検知（必須）
+
+> `requirements.md` §11 を必ず参照すること。本セクションは Lambda/ESP32 のうち ESP32 側の実装規約を定める。
+
+### 3.1 setup() で必須の初期化
+
+```cpp
+void setup() {
+  Serial.begin(115200);
+
+  // ① CPU 周波数を 80MHz に下げる（240MHz は不要）
+  setCpuFrequencyMhz(80);
+
+  // ② 不使用ペリフェラルを停止
+  btStop();
+
+  // ③ WiFi の Modem Sleep を有効化（DTIM ごとにモデムスリープ）
+  WiFi.setSleep(WIFI_PS_MIN_MODEM);
+
+  // ④ MQTT keepalive を延長（不要な PINGREQ を抑制）
+  mqttClient.setKeepAlive(60);
+
+  // ⑤ 入力ピンの設定と GPIO 割り込み登録
+  setupPir();
+  setupModeButton();
+
+  // 以下、WiFi / MQTT 接続処理 ...
+}
+```
+
+### 3.2 ループの省電力ポリシー
+
+- **`loop()` の周期は 100 ms。`delay(100)` または `vTaskDelay(pdMS_TO_TICKS(100))` を使う。**
+- 10 ms ポーリングは禁止（CPU を無駄に起こす）。デバウンス（30 ms）と長押し（2000 ms）の精度には十分。
+- `loop()` 内では「`mqttClient.loop()` の呼び出し」「割り込みフラグの処理」「PIR 自動消灯タイマーの判定」「変化時の `publishState()`」のみ行う。
+
+### 3.3 ISR（割り込みサービスルーチン）の禁則事項
+
+ISR 内で**許可される操作:**
+- `volatile` フラグ変数への書き込み
+- `millis()` の取得と保存
+
+ISR 内で**禁止される操作:**
+- `Serial.print*()` 系の呼び出し
+- `mqttClient.publish()` / `httpClient.POST()` 等の通信
+- `digitalRead/Write` 以外の重い周辺操作
+- 動的メモリ確保（`String`、`new`、`malloc` など）
+
+実処理は必ず `loop()` 側で行うこと。ISR の長時間化は WiFi/MQTT スタックとの競合と WDT リセットを引き起こす。
+
+---
+
+## 4. PIR センサー（AM312）実装規約
+
+### 4.1 ハードウェア前提
+
+- 採用センサー: **AM312**（小型 PIR モジュール）
+- 接続: `PIR_PIN = GPIO 27`（`config.h` で定義）
+- 電源: 3.3V または 5V 給電可
+- ホールド時間: **約 2 秒固定**（ハードウェアで調整不可）→ 「人がいる」状態の継続判定は ESP32 側ソフトタイマー（`AUTO_OFF_MS` 既定 5 分）で行う
+- **ウォームアップ:** 電源投入後 **60 秒間（`PIR_WARMUP_MS = 60000`）は PIR 入力を無視** すること。AM312 はウォームアップ中に誤検知を出すため、これを守らないと起動直後に意図せず点灯する。
+
+### 4.2 ✅ Good Example: 割り込み駆動 + loop での評価（省電力版）
+
+```cpp
+const unsigned long AUTO_OFF_MS    = 5UL * 60UL * 1000UL;
+const unsigned long PIR_WARMUP_MS  = 60UL * 1000UL;
+const unsigned long PIR_DEDUP_MS   = 1000UL;
+
+static volatile unsigned long pirLastIsrAt = 0;  // ISR で時刻のみ記録
+static volatile bool          pirRiseFlag = false;
+
+static unsigned long bootAt        = 0;
+static unsigned long lastMotionAt  = 0;
+static bool          ledIsOn       = false;
+
+void IRAM_ATTR onPirIsr() {
+  pirLastIsrAt = millis();
+  pirRiseFlag  = true;            // フラグ立てだけ。重い処理は loop で。
+}
+
+void setupPir() {
+  pinMode(PIR_PIN, INPUT);
+  bootAt = millis();
+  attachInterrupt(digitalPinToInterrupt(PIR_PIN), onPirIsr, RISING);
+}
+
+void handlePir() {
+  unsigned long now = millis();
+
+  // ① ウォームアップ中はフラグを捨てる
+  if (now - bootAt < PIR_WARMUP_MS) {
+    pirRiseFlag = false;
+    return;
+  }
+
+  // ② 立ち上がりエッジ処理（ISR からのフラグ）
+  if (pirRiseFlag) {
+    pirRiseFlag = false;          // 即クリア（次の割り込みを取りこぼさない）
+
+    if (currentMode != Mode::AUTO) {
+      Serial.println("[PIR] HIGH ignored (mode != AUTO)");
+    } else {
+      bool isNewEvent = (now - lastMotionAt > PIR_DEDUP_MS);
+      lastMotionAt = now;
+
+      // 自動点灯: 消灯中の新規イベントだけ WLED に POST
+      if (!ledIsOn && isNewEvent) {
+        applyDefaultScene();      // WLED /json/state に PIR_DEFAULT_* を POST
+        ledIsOn = true;
+        Serial.println("[PIR] motion -> LED ON");
+        publishState("PIR_ON");
+      }
+      // 点灯中の再トリガは lastMotionAt 更新のみ
+    }
+  }
+
+  // ③ 自動消灯タイマー（loop で 1 秒粒度で判定すれば十分）
+  if (ledIsOn && currentMode == Mode::AUTO &&
+      now - lastMotionAt > AUTO_OFF_MS) {
+    applyOff();                   // WLED /json/state に {"on": false}
+    ledIsOn = false;
+    Serial.printf("[PIR] timeout %lums -> LED OFF\n", AUTO_OFF_MS);
+    publishState("PIR_OFF");
+  }
+}
+```
+
+### 4.3 ❌ Bad Example
+
+```cpp
+// 悪い例 1: ISR で WLED API を叩く（WiFi/MQTT スタックと衝突して再起動する）
+void IRAM_ATTR onPirIsr() {
+  applyDefaultScene();   // ← HTTP は loop でやれ
+  Serial.println("...");  // ← Serial も loop でやれ
+}
+
+// 悪い例 2: AUTO 以外でも PIR で勝手に LED を点ける（MANUAL/STANDBY を破壊する）
+void handlePir() {
+  if (pirRiseFlag) { applyDefaultScene(); }  // ← モード判定なし
+}
+
+// 悪い例 3: ウォームアップを考慮しない（電源投入直後に誤点灯）
+void handlePir() {
+  if (pirRiseFlag) applyDefaultScene();
+  // → AM312 は起動 60 秒以内に誤検知を出す
+}
+
+// 悪い例 4: 自動消灯時に色・エフェクトまで上書きする（次回点灯時に余計な状態同期が必要）
+void applyOff() {
+  body["on"] = false;
+  body["bri"] = 0;                       // ← 不要
+  body["seg"][0]["col"][0][0] = 0;       // ← 不要
+  body["seg"][0]["fx"] = 0;              // ← 不要
+}
+```
+
+---
+
+## 5. プッシュスイッチ（モード制御用）実装規約
+
+### 5.1 ハードウェア前提
+
+- 採用: モーメンタリ式タクトスイッチ
+- 接続: `MODE_BTN_PIN = GPIO 13` ↔ GND
+- 入力モード: `INPUT_PULLUP`（押下で LOW）
+- デバウンス: 30 ms / 長押し: 2000 ms
+
+### 5.2 ✅ Good Example: 割り込み駆動 + loop でデバウンス／長押し評価
+
+```cpp
+const unsigned long DEBOUNCE_MS   = 30;
+const unsigned long LONG_PRESS_MS = 2000;
+const unsigned long SHORT_MIN_MS  = 50;
+
+static volatile unsigned long btnLastIsrAt = 0;
+static volatile bool          btnIsrFlag  = false;
+
+static int           lastStableLevel = HIGH;
+static unsigned long pressStartAt    = 0;
+static bool          longFired       = false;
+
+void IRAM_ATTR onBtnIsr() {
+  btnLastIsrAt = millis();
+  btnIsrFlag = true;
+}
+
+void setupModeButton() {
+  pinMode(MODE_BTN_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(MODE_BTN_PIN), onBtnIsr, CHANGE);
+}
+
+void handleButton() {
+  unsigned long now = millis();
+
+  // ① 長押し検出: 押下中なら ISR を待たず loop で時間経過チェック
+  if (lastStableLevel == LOW && !longFired &&
+      now - pressStartAt >= LONG_PRESS_MS) {
+    onLongPress();                // 強制 STANDBY
+    longFired = true;
+  }
+
+  // ② エッジ処理: ISR がフラグを立てたときだけ評価
+  if (!btnIsrFlag) return;
+  // デバウンス: ISR からの最後の変化から 30ms 経過しないと確定しない
+  if (now - btnLastIsrAt < DEBOUNCE_MS) return;
+  btnIsrFlag = false;
+
+  int level = digitalRead(MODE_BTN_PIN);
+  if (level == lastStableLevel) return;
+  lastStableLevel = level;
+
+  if (level == LOW) {
+    // 立ち下がり: 押下開始
+    pressStartAt = now;
+    longFired = false;
+  } else {
+    // 立ち上がり: 離した
+    unsigned long heldFor = now - pressStartAt;
+    if (!longFired && heldFor >= SHORT_MIN_MS && heldFor < LONG_PRESS_MS) {
+      onShortPress();
+    }
+  }
+}
+
+void onShortPress() {
+  if (currentMode == Mode::STANDBY) setMode(Mode::AUTO);
+  else                              setMode(Mode::STANDBY);
+}
+void onLongPress() {
+  setMode(Mode::STANDBY);
+}
+```
+
+### 5.3 ❌ Bad Example
+
+```cpp
+// 悪い例 1: ISR でモード遷移と HTTP / publishState を呼ぶ（再起動の元凶）
+void IRAM_ATTR onBtnIsr() {
+  setMode(Mode::STANDBY);    // ← MQTT publish が含まれているので NG
+  publishState("BTN");
+}
+
+// 悪い例 2: デバウンスなし → チャタリングで多重発火
+void loop() {
+  if (digitalRead(MODE_BTN_PIN) == LOW) toggleMode();
+}
+
+// 悪い例 3: 10ms 周期のポーリングで CPU を起こし続ける（省電力規約違反）
+void loop() {
+  pollButton();
+  delay(10);    // ← §11 違反。100ms にすること。
+}
+```
+
+## 6. 認証情報とシークレット管理
 
 - WiFi の SSID・パスワード、AWS IoT の証明書・プライベートキーは **ソースコードにハードコードしてはならない。**
 - 証明書類（`cert.pem`, `private.key`, `root_ca.pem`）は `esp32/secrets/` に配置し、`.gitignore` で追跡対象から除外すること。
@@ -89,7 +403,7 @@ const char* password = "password123";
 
 ---
 
-## 4. WLED HTTP API の利用規則
+## 7. WLED HTTP API の利用規則
 
 - ESP32 から WLED を制御する場合は **WLED の JSON API**（`POST http://<wled-ip>/json/state`）を使用すること。
 - API リクエストは非同期（`WiFiClient` + `HTTPClient`）で行い、タイムアウトを必ず設定すること（推奨: 3000ms）。
@@ -116,7 +430,7 @@ http.POST(payload);                             // 戻り値を無視
 
 ---
 
-## 5. エラーハンドリングと再接続ロジック
+## 8. エラーハンドリングと再接続ロジック
 
 - WiFi および MQTT の接続断は **必ず検出・再接続** する実装を行うこと。接続断のまま処理を続けてはならない。
 - 再接続のリトライには指数バックオフを使用し、無限ループによる CPU 占有を避けること。
@@ -151,7 +465,7 @@ void loop() {
 
 ---
 
-## 6. シリアルログ規約
+## 9. シリアルログ規約
 
 - デバッグ用の `Serial.print` はすべて `[モジュール名]` プレフィックスを付けること。
 - 本番ビルドでは `#ifdef DEBUG_MODE` で囲み、`platformio.ini` の `build_flags` で制御すること。
@@ -168,7 +482,7 @@ Serial.println(payload);
 
 ---
 
-## 7. 開発環境規約（PlatformIO）
+## 10. 開発環境規約（PlatformIO）
 
 - プロジェクトは **PlatformIO** で管理し、`esp32/platformio.ini` に設定を集約すること。
 - ライブラリの依存関係は `platformio.ini` の `lib_deps` で管理し、バージョンを固定すること（`@バージョン` 形式）。
