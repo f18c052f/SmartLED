@@ -33,15 +33,53 @@ Alexa → Lambda → Gemini API → IoT Core (MQTT) → ESP32 のフローを実
 | `npm run watch` | 変更を監視してコンパイル |
 | `npm run test` | Jest でユニットテスト実行 |
 | `npx cdk synth` | CloudFormation テンプレートを生成 |
-| `npx cdk deploy` | スタックをデプロイ |
-| `npx cdk diff` | デプロイ済みスタックとの差分を表示 |
+| `npx cdk deploy <スタック名>` | 対象スタックをデプロイ（下記「CDK デプロイ」を参照） |
+| `npx cdk diff <スタック名>` | デプロイ済みスタックとの差分を表示 |
+
+## CDK デプロイ（スタック名・リージョン・環境変数）
+
+`bin/aws.ts` のスタック ID は **`SmartLED-IoTBackend`**。スタックの `env` は **`CDK_DEFAULT_ACCOUNT`** と **`CDK_DEFAULT_REGION`** を参照する。未設定だと Synth / Deploy が失敗することがあるため、デプロイ前にターミナルで設定する。
+
+**PowerShell の例（`ap-northeast-1`、アカウントは CLI から自動取得）:**
+
+```powershell
+$env:CDK_DEFAULT_REGION  = "ap-northeast-1"
+$env:CDK_DEFAULT_ACCOUNT = (aws sts get-caller-identity --query Account --output text)
+npx cdk diff SmartLED-IoTBackend
+npx cdk deploy SmartLED-IoTBackend --region ap-northeast-1 --require-approval never --outputs-file cdk-outputs.json
+```
+
+**Bash の例:**
+
+```bash
+export CDK_DEFAULT_REGION=ap-northeast-1
+export CDK_DEFAULT_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+npx cdk diff SmartLED-IoTBackend
+npx cdk deploy SmartLED-IoTBackend --region ap-northeast-1 --require-approval never --outputs-file cdk-outputs.json
+```
+
+| オプション / 引数 | 用途 |
+|-------------------|------|
+| `SmartLED-IoTBackend` | デプロイ対象スタック。**省略すると対話プロンプトや別スタックになる**ため明示推奨。 |
+| `--region ap-northeast-1` | このプロジェクトの想定リージョンと揃える。 |
+| `--require-approval never` | IAM 変更の承認プロンプトを出さない（CI や慣れた環境向け）。 |
+| `--outputs-file cdk-outputs.json` | CloudFormation 出力を JSON で保存（任意）。 |
+
+初回のみ **`cdk bootstrap`** が必要な場合:
+
+```bash
+npx cdk bootstrap aws://${CDK_DEFAULT_ACCOUNT}/ap-northeast-1
+```
 
 ## Phase 3: Alexa スキル連携
 
 Alexa Developer Console でスキルを作成したら、**Skill ID**（`amzn1.ask.skill.xxxxxxxx-...`）を控え、デプロイ時にコンテキストで渡す。
 
 ```bash
-npx cdk deploy -c alexaSkillId=amzn1.ask.skill.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+npx cdk deploy SmartLED-IoTBackend \
+  --region ap-northeast-1 \
+  --require-approval never \
+  -c alexaSkillId=amzn1.ask.skill.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 ```
 
 これで Lambda のリソースポリシーに「このスキルからのみ Invoke を許可」が追加される。  
