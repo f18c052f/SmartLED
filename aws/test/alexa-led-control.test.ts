@@ -65,6 +65,34 @@ describe("classifyAlexaIntent", () => {
     expect(classifyAlexaIntent(event)).toEqual({ kind: "sessionEnded" });
   });
 
+  it("classifies AMAZON.HelpIntent", () => {
+    const event: AlexaRequest = {
+      request: { type: "IntentRequest", intent: { name: "AMAZON.HelpIntent" } },
+    };
+    expect(classifyAlexaIntent(event)).toEqual({ kind: "amazonHelp" });
+  });
+
+  it("classifies AMAZON.StopIntent", () => {
+    const event: AlexaRequest = {
+      request: { type: "IntentRequest", intent: { name: "AMAZON.StopIntent" } },
+    };
+    expect(classifyAlexaIntent(event)).toEqual({ kind: "amazonStop" });
+  });
+
+  it("classifies AMAZON.CancelIntent", () => {
+    const event: AlexaRequest = {
+      request: { type: "IntentRequest", intent: { name: "AMAZON.CancelIntent" } },
+    };
+    expect(classifyAlexaIntent(event)).toEqual({ kind: "amazonCancel" });
+  });
+
+  it("classifies AMAZON.NavigateHomeIntent", () => {
+    const event: AlexaRequest = {
+      request: { type: "IntentRequest", intent: { name: "AMAZON.NavigateHomeIntent" } },
+    };
+    expect(classifyAlexaIntent(event)).toEqual({ kind: "amazonNavigateHome" });
+  });
+
   it("classifies PowerOnIntent", () => {
     const event: AlexaRequest = {
       request: { type: "IntentRequest", intent: { name: "PowerOnIntent" } },

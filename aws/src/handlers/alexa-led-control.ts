@@ -74,6 +74,8 @@ async function getGeminiApiKey(paramName: string): Promise<string> {
  * インテント別の振る舞い（`requirements.md` §7-§9 準拠）:
  *   - LaunchRequest        → ウェルカム応答（セッション継続）
  *   - SessionEndedRequest  → 空応答（セッション終了）
+ *   - AMAZON.HelpIntent    → 使い方の案内（セッション継続、MQTT なし）
+ *   - AMAZON.Stop/Cancel/NavigateHome → 終了挨拶（MQTT なし）
  *   - PowerOnIntent        → mode publish: AUTO（PIRが再び有効に）
  *   - PowerOffIntent       → mode publish: STANDBY（強制消灯）
  *   - LightControlIntent   → Gemini → control publish + mode publish: MANUAL
@@ -93,6 +95,24 @@ export const handler = async (event: AlexaRequest): Promise<AlexaResponse> => {
   if (command.kind === "sessionEnded") {
     log("INFO", "Received SessionEndedRequest");
     return buildAlexaResponse("", true);
+  }
+
+  if (command.kind === "amazonHelp") {
+    log("INFO", "Received AMAZON.HelpIntent");
+    return buildAlexaResponse(
+      "スマートLEDでは、例えば「ライトを読書モードにして」のように言うと照明を変えられます。" +
+        "「ライトをつけて」で自動、「ライトを消して」でスタンバイにします。",
+      false
+    );
+  }
+
+  if (
+    command.kind === "amazonStop" ||
+    command.kind === "amazonCancel" ||
+    command.kind === "amazonNavigateHome"
+  ) {
+    log("INFO", "Received Amazon built-in end-session intent", { kind: command.kind });
+    return buildAlexaResponse("はい。また聞いてくださいね。");
   }
 
   try {

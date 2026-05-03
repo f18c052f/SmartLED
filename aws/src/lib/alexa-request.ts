@@ -30,6 +30,10 @@ export interface AlexaResponse {
 export type AlexaCommand =
   | { kind: "launch" }
   | { kind: "sessionEnded" }
+  | { kind: "amazonHelp" }
+  | { kind: "amazonStop" }
+  | { kind: "amazonCancel" }
+  | { kind: "amazonNavigateHome" }
   | { kind: "scene"; phrase: string }
   | { kind: "powerOn" }
   | { kind: "powerOff" }
@@ -42,6 +46,7 @@ export type AlexaCommand =
  *   - PowerOnIntent  → kind: "powerOn"
  *   - PowerOffIntent → kind: "powerOff"
  *   - LightControlIntent → kind: "scene" (phrase スロット必須)
+ *   - AMAZON.HelpIntent / StopIntent / CancelIntent / NavigateHomeIntent → 各種 built-in
  *   - その他 → kind: "unknown"
  */
 export function classifyAlexaIntent(event: AlexaRequest): AlexaCommand {
@@ -51,6 +56,14 @@ export function classifyAlexaIntent(event: AlexaRequest): AlexaCommand {
 
   const intentName = event?.request?.intent?.name;
   switch (intentName) {
+    case "AMAZON.HelpIntent":
+      return { kind: "amazonHelp" };
+    case "AMAZON.StopIntent":
+      return { kind: "amazonStop" };
+    case "AMAZON.CancelIntent":
+      return { kind: "amazonCancel" };
+    case "AMAZON.NavigateHomeIntent":
+      return { kind: "amazonNavigateHome" };
     case "PowerOnIntent":
       return { kind: "powerOn" };
     case "PowerOffIntent":
