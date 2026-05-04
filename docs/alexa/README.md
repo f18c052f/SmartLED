@@ -4,9 +4,11 @@
 
 ## ファイル一覧
 
-| ファイル | 用途 |
-|----------|------|
+
+| ファイル                           | 用途                                             |
+| ------------------------------ | ---------------------------------------------- |
 | `interaction-model.ja-JP.json` | 対話モデル（日本語ロケール）。Console の JSON Editor にそのまま貼り付け |
+
 
 ## 適用手順
 
@@ -16,11 +18,11 @@
 4. `interaction-model.ja-JP.json` の `interactionModel` キー以下を丸ごと貼り付け
 5. **Save Model** → **Build Model**（Build 完了まで数分待つ）
 6. 左メニュー **Build → Endpoint** で AWS Lambda の ARN を設定
-   - ARN は `aws/` ディレクトリで `npx cdk deploy` 後に CloudFormation 出力 / Lambda コンソールから取得
+  - ARN は `aws/` ディレクトリで `npx cdk deploy` 後に CloudFormation 出力 / Lambda コンソールから取得
 7. **Test** タブで以下を確認:
-   - 「ライトを読書モードにして」 → `LightControlIntent` 発火、Gemini → control + mode=MANUAL publish
-   - 「ライトをつけて」 → `PowerOnIntent` 発火、mode=AUTO publish
-   - 「ライトを消して」 → `PowerOffIntent` 発火、mode=STANDBY publish
+  - 「ライトを読書モードにして」 → `LightControlIntent` 発火、Gemini → control + mode=MANUAL publish
+  - 「ライトをつけて」 → `PowerOnIntent` 発火、mode=AUTO publish
+  - 「ライトを消して」 → `PowerOffIntent` 発火、mode=STANDBY publish
 
 ## 参考
 
