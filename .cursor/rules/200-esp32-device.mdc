@@ -487,11 +487,12 @@ Serial.println(payload);
 - プロジェクトは **PlatformIO** で管理し、`esp32/platformio.ini` に設定を集約すること。
 - ライブラリの依存関係は `platformio.ini` の `lib_deps` で管理し、バージョンを固定すること（`@バージョン` 形式）。
 - ビルド環境は `[env:smartled]` のように名前付きで定義すること。
+- **プラットフォームはバージョンを必ず固定すること。** `platform = espressif32` と書くと、他プロジェクト（WLED など）がキャッシュした Tasmota フォーク版に解決されてビルドエラーになる場合がある。
 
 ```ini
 ; ✅ Good: platformio.ini の例
 [env:smartled]
-platform  = espressif32
+platform  = espressif32@6.9.0   ; バージョン固定必須
 board     = esp32dev
 framework = arduino
 monitor_speed = 115200
@@ -502,3 +503,31 @@ lib_deps =
   bblanchon/ArduinoJson@^7.0
   arduino-libraries/ArduinoHttpClient@^0.6
 ```
+
+### 10.1 WLED 側のビルド設定（`platformio_override.ini`）
+
+WLED の `platformio.ini` は CI 用に全環境が `default_envs` に列挙されており、そのままでは全環境のビルドが走る。また VS Code の PlatformIO 拡張が自動整形時に `src_dir` などのパスを破壊することがあるため、**WLED の `platformio.ini` は直接編集しない**こと。
+
+ローカルの設定変更は WLED の **`platformio_override.ini`** に書く。このファイルは WLED の `.gitignore` に含まれており、コミットされない（意図的な設計）。
+
+```ini
+; WLED/platformio_override.ini — ローカル専用・git 管理外
+[platformio]
+default_envs = esp32dev   ; ビルド対象を esp32dev 1 環境に絞る
+```
+
+追加設定の例（必要な場合のみ）:
+
+```ini
+; アップロードポートを固定したいとき
+[env:esp32dev]
+upload_port = COM3
+
+; カスタムビルドフラグを追加したいとき
+[env:esp32dev]
+build_flags =
+  ${env.build_flags}
+  -D MY_CUSTOM_FLAG
+```
+
+> **注意:** `platformio_override.ini` を編集したあと VS Code で PlatformIO パネルを開き直すと設定が反映される。
