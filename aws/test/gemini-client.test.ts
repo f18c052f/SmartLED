@@ -3,7 +3,7 @@ import { fetchLedParams, isLedParams, __forTesting } from "../src/lib/gemini-cli
 const mockFetch = jest.fn();
 globalThis.fetch = mockFetch;
 
-const { allowedEffectIds } = __forTesting;
+const { allowedEffectIds, allowedEffectIdStrings } = __forTesting;
 const VALID_PARAMS = {
   color: "#ff6600",
   brightness: 128,
@@ -111,8 +111,9 @@ describe("fetchLedParams", () => {
     const callBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
     expect(callBody.generationConfig).toHaveProperty("responseSchema");
     expect(callBody.generationConfig.responseSchema.properties.effectId.enum).toEqual(
-      allowedEffectIds
+      allowedEffectIdStrings
     );
+    expect(callBody.generationConfig.responseSchema.properties.effectId.type).toBe("string");
   });
 
   it("includes the effects catalog in the system prompt", async () => {
@@ -184,5 +185,14 @@ describe("fetchLedParams", () => {
 
     const result = await fetchLedParams("リラックスしたい", "test-api-key");
     expect(result).toEqual(params);
+  });
+
+  it("normalizes string effectId from Gemini (Structured Output string enum)", async () => {
+    const fromApi = { color: "#fffaf0", brightness: 200, effect: "solid", effectId: "0" };
+    const expected = { color: "#fffaf0", brightness: 200, effect: "solid", effectId: 0 };
+    mockFetch.mockResolvedValueOnce(makeMockResponse(JSON.stringify(fromApi)));
+
+    const result = await fetchLedParams("読書モード", "test-api-key");
+    expect(result).toEqual(expected);
   });
 });

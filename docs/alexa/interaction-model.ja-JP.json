@@ -26,7 +26,6 @@
             }
           ],
           "samples": [
-            "{phrase}",
             "ライトを {phrase}",
             "{phrase} にして",
             "照明を {phrase}",

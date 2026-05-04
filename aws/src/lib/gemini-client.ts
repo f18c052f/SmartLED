@@ -12,6 +12,8 @@ interface WledEffect {
 
 const wledEffects = wledEffectsData.effects as WledEffect[];
 const allowedEffectIds: number[] = wledEffects.map((e) => e.id);
+/** Gemini `response_schema` の enum は文字列要素が必要（数値は 400: TYPE_STRING になる） */
+const allowedEffectIdStrings: string[] = allowedEffectIds.map(String);
 const allowedAliases: string[] = wledEffects.map((e) => e.alias);
 
 /** IoT Core → ESP32 → WLED に渡す LED 制御パラメータ */
@@ -57,7 +59,9 @@ ${effectsCatalog}
 - 警告・注意 → 赤青系、Police (id=80) / Strobe (id=22)`;
 
 interface GeminiResponse {
+  promptFeedback?: { blockReason?: string; blockReasonMessage?: string };
   candidates?: Array<{
+    finishReason?: string;
     content?: {
       parts?: Array<{ text?: string }>;
     };
@@ -71,7 +75,7 @@ const responseSchema = {
     color: { type: "string" },
     brightness: { type: "integer", minimum: 0, maximum: 255 },
     effect: { type: "string", enum: allowedAliases },
-    effectId: { type: "integer", enum: allowedEffectIds },
+    effectId: { type: "string", enum: allowedEffectIdStrings },
   },
   required: ["color", "brightness", "effect", "effectId"],
 };
@@ -105,7 +109,13 @@ export async function fetchLedParams(naturalLanguage: string, apiKey: string): P
   const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
   if (!rawText) {
-    throw new Error("Gemini API returned empty response");
+    const finish = data.candidates?.[0]?.finishReason;
+    const block = data.promptFeedback?.blockReason;
+    const blockMsg = data.promptFeedback?.blockReasonMessage;
+    const snippet = JSON.stringify(data).slice(0, 1500);
+    throw new Error(
+      `Gemini API returned empty response (finishReason=${finish ?? "n/a"}, blockReason=${block ?? "n/a"}, blockReasonMessage=${blockMsg ?? "n/a"}, bodySnippet=${snippet})`
+    );
   }
 
   return parseLedParams(rawText);
@@ -126,11 +136,23 @@ function parseLedParams(raw: string): LedParams {
     throw new Error(`Failed to parse Gemini response as JSON: ${raw}`);
   }
 
-  if (!isLedParams(parsed)) {
+  const normalized = normalizeLedParamsFromGemini(parsed);
+  if (!isLedParams(normalized)) {
     throw new Error(`Invalid LED params from Gemini: ${JSON.stringify(parsed)}`);
   }
 
-  return parsed;
+  return normalized;
+}
+
+/** Structured Output で effectId が文字列で返る場合に数値へ揃える */
+function normalizeLedParamsFromGemini(parsed: unknown): unknown {
+  if (typeof parsed !== "object" || parsed === null) return parsed;
+  const o = { ...(parsed as Record<string, unknown>) };
+  const id = o.effectId;
+  if (typeof id === "string" && /^\d+$/.test(id)) {
+    o.effectId = parseInt(id, 10);
+  }
+  return o;
 }
 
 /**
@@ -160,5 +182,6 @@ export function isLedParams(v: unknown): v is LedParams {
 /** テスト用の内部公開（プロダクションコードから使わないこと） */
 export const __forTesting = {
   allowedEffectIds,
+  allowedEffectIdStrings,
   allowedAliases,
 };
