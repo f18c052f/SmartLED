@@ -1,7 +1,6 @@
 ---
 description: Git 管理外の個人用ドキュメント — エージェントは編集・削除・置換を禁止
 globs:
-  - docs/acceptance-checklist.md
   - notepad.md
   - notepad.txt
 ---
