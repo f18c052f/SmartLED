@@ -11,7 +11,7 @@
   },
   "interactionModel": {
     "languageModel": {
-      "invocationName": "スマートエルイーディー",
+      "invocationName": "ライトコントロール",
       "intents": [
         { "name": "AMAZON.CancelIntent", "samples": [] },
         { "name": "AMAZON.HelpIntent", "samples": [] },
