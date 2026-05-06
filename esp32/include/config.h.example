@@ -36,6 +36,11 @@
 #define WLED_PORT       80
 #define WLED_HTTP_TIMEOUT_MS 3000
 
+// ABL 上限（mA）。requirements.md §4。4250 を超えないこと。
+#define WLED_ABL_MAX_MILLIAMPS 4250
+// 1: WiFi 接続直後に POST /json/cfg で hw.led.maxpwr を同期（sv=false・RAM のみ）
+#define WLED_SYNC_ABL_ON_BOOT  1
+
 // =============================================================================
 // GPIO 割り当て（requirements.md §8.0 で公式に指定）
 // =============================================================================

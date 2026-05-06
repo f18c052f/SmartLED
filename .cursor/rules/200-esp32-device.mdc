@@ -11,6 +11,7 @@ globs: ["esp32/**/*"]
 
 - **電流制限の強制:** WLED の設定用 JSON（`cfg.json`）や、API 経由で LED 状態を変更するコード・ペイロードを生成・修正する際は、必ず `docs/requirements.md` の安全仕様に従うこと。
 - WLED の ABL（自動輝度制限）設定値 `abl.mA` は、各ポートの物理ヒューズ容量（5A）に安全マージンを考慮し、**4250mA（4.25A）以下** に設定すること。これを超える値を含む設定・提案を生成してはならない。
+- ブリッジは起動時に `POST /json/cfg` で `hw.led.maxpwr` を同期する（`syncWledAblOnBoot`）。変更する場合は `WLED_ABL_MAX_MILLIAMPS` / `WLED_SYNC_ABL_ON_BOOT` と `docs/requirements.md` §4 を揃えること。
 - **WLED JSON API ペイロード例（安全な上限値）:**
 
 ```json

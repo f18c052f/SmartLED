@@ -22,6 +22,14 @@
 #include "config.h"
 #include "../secrets/certs.h"
 
+// WLED ABL 同期（config.h 未記載の既存環境向けデフォルト）
+#ifndef WLED_ABL_MAX_MILLIAMPS
+#define WLED_ABL_MAX_MILLIAMPS 4250
+#endif
+#ifndef WLED_SYNC_ABL_ON_BOOT
+#define WLED_SYNC_ABL_ON_BOOT 1
+#endif
+
 // -----------------------------------------------------------------------------
 // クライアント
 // -----------------------------------------------------------------------------
@@ -85,6 +93,7 @@ void publishStateIfChanged(const char* trigger);
 void applyDefaultScene();
 void applyOff();
 void applyLedParams(int r, int g, int b, int brightness, int effectId);
+void syncWledAblOnBoot();
 
 // =============================================================================
 // ISR
@@ -126,6 +135,9 @@ void setup() {
   connectWiFi();
   WiFi.setSleep(WIFI_PS_MIN_MODEM);  // Modem Sleep を有効化（MQTT 接続は維持）
   Serial.println("[PWR] WiFi sleep mode = MIN_MODEM");
+
+  // WLED ABL 上限（requirements.md §4）を RAM に同期（MQTT より先に実施）
+  syncWledAblOnBoot();
 
   // TLS とサーバー設定
   wifiSecureClient.setCACert(AWS_CERT_CA);
@@ -418,6 +430,47 @@ void publishStateIfChanged(const char* trigger) {
 // =============================================================================
 // WLED API（HTTP）
 // =============================================================================
+void syncWledAblOnBoot() {
+#if !WLED_SYNC_ABL_ON_BOOT
+  Serial.println("[WLED] ABL sync skipped (WLED_SYNC_ABL_ON_BOOT=0)");
+  return;
+#endif
+  uint16_t capMa = static_cast<uint16_t>(WLED_ABL_MAX_MILLIAMPS);
+  if (capMa > 4250) {
+    capMa = 4250;
+  }
+
+  JsonDocument body;
+  body["hw"]["led"]["maxpwr"] = capMa;
+  // false: NVRAM 非更新（ブリッジ再起動のたびに cfg.json を書かない）。RAM 上の上限のみ即時反映。
+  body["sv"] = false;
+
+  String payload;
+  serializeJson(body, payload);
+
+  constexpr int kAttempts = 6;
+  for (int attempt = 1; attempt <= kAttempts; ++attempt) {
+    HTTPClient http;
+    String url = String("http://") + WLED_IP + ":" + WLED_PORT + "/json/cfg";
+    http.begin(url);
+    http.setTimeout(WLED_HTTP_TIMEOUT_MS);
+    http.addHeader("Content-Type", "application/json");
+
+    int code = http.POST(payload);
+    http.end();
+
+    if (code == HTTP_CODE_OK) {
+      Serial.printf("[WLED] ABL hw.led.maxpwr=%u mA applied (attempt %d, sv=false)\n", capMa, attempt);
+      return;
+    }
+    Serial.printf("[WLED] ABL sync HTTP %d (attempt %d/%d)\n", code, attempt, kAttempts);
+    if (attempt < kAttempts) {
+      delay(1500);
+    }
+  }
+  Serial.println("[WLED] ABL sync failed: check WLED_IP, WLED power, AP lock, or settings PIN");
+}
+
 void applyDefaultScene() {
   applyLedParams(PIR_DEFAULT_COLOR_R, PIR_DEFAULT_COLOR_G, PIR_DEFAULT_COLOR_B,
                  PIR_DEFAULT_BRIGHTNESS, PIR_DEFAULT_EFFECT_ID);
