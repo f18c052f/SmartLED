@@ -1,0 +1,144 @@
+---
+description: AWS Lambda および CDK のテストコーディング規約とベストプラクティス
+globs: ["aws/test/**/*"]
+---
+
+# Testing Standards (Jest + ts-jest)
+
+## 1. テストの分類と方針
+
+| 分類 | 対象 | モック対象 |
+|------|------|-----------|
+| 純粋関数テスト | 型変換・バリデーション・パース | なし |
+| 外部API テスト | Gemini API など fetch 呼び出し | `globalThis.fetch` |
+| CDK Assertions | スタック定義のリソース検証 | なし（CDK が内部処理） |
+
+AWS SDK クライアントはモジュールレベルで初期化されるため、完全な統合テストは Lambda 環境（実機または `cdk invoke`）で行う。
+
+---
+
+## 2. `globalThis.fetch` のモック（Few-shot）
+
+### ✅ Good Example
+
+```typescript
+// ファイル先頭でモックを宣言・代入する
+const mockFetch = jest.fn();
+globalThis.fetch = mockFetch;
+
+function makeMockResponse(text: string) {
+  return {
+    ok: true,
+    json: async () => ({
+      candidates: [{ content: { parts: [{ text }] } }],
+    }),
+  };
+}
+
+describe("fetchLedParams", () => {
+  beforeEach(() => {
+    mockFetch.mockClear(); // テストごとに呼び出し履歴をリセット
+  });
+
+  it("returns valid LED params on successful response", async () => {
+    mockFetch.mockResolvedValueOnce(makeMockResponse('{"color":"#ffffff","brightness":200,"effect":"solid"}'));
+    const result = await fetchLedParams("読書モード", "api-key");
+    expect(result).toEqual({ color: "#ffffff", brightness: 200, effect: "solid" });
+  });
+
+  it("throws on non-ok HTTP status", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 429, text: async () => "Rate limit" });
+    await expect(fetchLedParams("test", "key")).rejects.toThrow("Gemini API error: 429");
+  });
+});
+```
+
+### ❌ Bad Example
+
+```typescript
+// 悪い例: jest.spyOn を使うと型エラーになりやすい
+jest.spyOn(global, "fetch").mockResolvedValue(...); // Node.js 環境では不安定
+
+// 悪い例: beforeEach でモックをクリアしない → テスト間干渉が起きる
+describe("fetchLedParams", () => {
+  it("test1", async () => { /* mockFetch.mockClear() を呼ばない */ });
+  it("test2", async () => { /* 前のテストのモック状態が残る */ });
+});
+```
+
+---
+
+## 3. 純粋関数テスト（Few-shot）
+
+型ガード・バリデーション・スロット抽出などの純粋関数は、モックなしで網羅的にテストする。
+
+### ✅ Good Example
+
+```typescript
+import { isLedParams } from "../src/lib/gemini-client";
+
+describe("isLedParams", () => {
+  it("accepts valid params", () => {
+    expect(isLedParams({ color: "#ff6600", brightness: 128, effect: "solid" })).toBe(true);
+  });
+
+  // 境界値を必ずテストする
+  it("rejects brightness out of range", () => {
+    expect(isLedParams({ color: "#ffffff", brightness: -1,  effect: "solid" })).toBe(false);
+    expect(isLedParams({ color: "#ffffff", brightness: 256, effect: "solid" })).toBe(false);
+    expect(isLedParams({ color: "#ffffff", brightness: 1.5, effect: "solid" })).toBe(false);
+  });
+});
+```
+
+### ❌ Bad Example
+
+```typescript
+// 悪い例: ハッピーパスのみテスト（境界値・異常系がない）
+it("accepts valid params", () => {
+  expect(isLedParams({ color: "#ffffff", brightness: 100, effect: "solid" })).toBe(true);
+  // ここで終わり → brightness: -1 や effect: "invalid" が通過しても気づかない
+});
+```
+
+---
+
+## 4. CDK Assertions テスト（Few-shot）
+
+### ✅ Good Example
+
+```typescript
+import * as cdk from "aws-cdk-lib";
+import { Template } from "aws-cdk-lib/assertions";
+import { IoTBackendStack } from "../lib/iot-backend-stack";
+
+test("Lambda function is created with correct runtime and memory", () => {
+  const app = new cdk.App();
+  const stack = new IoTBackendStack(app, "TestStack", {
+    env: { account: "123456789012", region: "ap-northeast-1" },
+  });
+  const template = Template.fromStack(stack);
+
+  template.hasResourceProperties("AWS::Lambda::Function", {
+    Runtime: "nodejs20.x",
+    MemorySize: 256,
+    Timeout: 30,
+  });
+});
+```
+
+### ❌ Bad Example
+
+```typescript
+// 悪い例: env を指定しない → region/account がワイルドカードになり ARN 検証が機能しない
+const stack = new IoTBackendStack(app, "TestStack");
+```
+
+---
+
+## 5. テストしてはいけないもの
+
+- `console.log` / `console.error` の出力内容（実装詳細）
+- Gemini API の実際の応答内容（外部サービスの動作は責務外）
+- AWS IAM ポリシーの ARN 文字列の完全一致（CDK が自動生成する論理 ID を含む）
+- タイムアウト・非同期タイミングに依存するテスト

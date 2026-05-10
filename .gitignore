@@ -1,0 +1,7 @@
+# 個人メモ（Git 管理外）
+notepad.txt
+notepad.md
+
+# ESP32 機密情報（証明書・認証情報）
+esp32/secrets/certs.h
+esp32/include/config.h

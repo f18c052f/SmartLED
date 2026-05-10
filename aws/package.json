@@ -1,0 +1,39 @@
+{
+  "name": "aws",
+  "version": "0.1.0",
+  "bin": {
+    "aws": "bin/aws.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "jest",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "cdk": "cdk"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.160",
+    "@types/jest": "^30",
+    "@types/node": "^24.10.1",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "aws-cdk": "2.1106.1",
+    "esbuild": "^0.24.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "jest": "^30",
+    "prettier": "^3.4.2",
+    "ts-jest": "^29",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.9.3"
+  },
+  "dependencies": {
+    "@aws-sdk/client-iot": "^3.995.0",
+    "@aws-sdk/client-iot-data-plane": "^3.995.0",
+    "@aws-sdk/client-ssm": "^3.995.0",
+    "aws-cdk-lib": "^2.238.0",
+    "constructs": "^10.0.0"
+  }
+}
