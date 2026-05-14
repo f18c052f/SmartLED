@@ -14,6 +14,7 @@
 - [ ] **第5章** E2E
 - [ ] **第6章** 環境変更時
 - [ ] **第7章** 完了宣言（DoD）
+- 📋 **第8章** トラブルシューティング（チェック項目なし・参照用）
 
 ---
 
@@ -194,7 +195,7 @@ npx cdk deploy SmartLED-IoTBackend --region ap-northeast-1 --require-approval ne
 
   | 項目 | 設定値の例 | 備考 |
   |------|-----------|------|
-  | Static IP | `192.168.0.8` | ルータの DHCP 割り当て範囲**外**の未使用 IP を選ぶ |
+  | Static IP | `192.168.0.200` | ルータの DHCP 割り当て範囲**外**の未使用 IP を選ぶ（200 番台は家庭用ルーターの DHCP 範囲外になることが多い） |
   | Static Gateway | `192.168.0.1` | ルータの IP（`ipconfig` / `ip route` で確認） |
   | Static Subnet | `255.255.255.0` | 通常の家庭環境はこの値 |
 
@@ -268,6 +269,67 @@ npx cdk deploy SmartLED-IoTBackend --region ap-northeast-1 --require-approval ne
 - [ ] 第4章を完了した
 - [ ] 第5章を完了した
 - [ ] 不具合・仕様差分は Issue または `docs/requirements.md` に反映済みである
+
+---
+
+## 第8章 トラブルシューティング
+
+---
+
+### T-1: Alexa で操作しても LED が光らない（断続的）
+
+**症状**
+- MQTT テストクライアントで `lastTrigger: "MQTT_CONTROL"` や `"PIR_ON"` は届くが LED が変化しない
+- `http://<WLED_IP>` が開けたり開けなかったりする
+
+**原因: WLED の IP 競合**
+
+WLED に設定した静的 IP がルーターの DHCP 割り当て範囲内だと、ルーターが同じ IP を別のデバイスに配布して競合する。競合した側のデバイスが接続するたびに WLED が応答できなくなる。
+
+**確認方法**
+
+1. `http://wled-xxxxxx.local`（mDNS）は繋がるのに `http://<WLED_IP>` が繋がらない場合は競合を疑う
+2. ルーター管理画面（多くは `http://192.168.0.1` または `http://192.168.1.1`）で「接続中のデバイス一覧」を確認し、同じ IP に複数デバイスが表示されていないか確認する
+
+**解決方法**
+
+WLED の静的 IP を DHCP 範囲外のアドレスに変更する。家庭用ルーターの DHCP 割り当ては通常 `192.168.x.2〜100` 程度なので、`192.168.0.200` など **200 番台**が安全。
+
+1. `http://wled-xxxxxx.local/settings/wifi` を開く（IP で開けなくても mDNS なら到達できることが多い）
+2. Static IP の最終オクテットを `200` に変更して **Save & Connect**
+3. 変更が反映されない場合は `http://wled-xxxxxx.local/reset` で再起動を強制する
+4. `http://192.168.0.200` で Web UI が開くことを確認する
+5. `esp32/include/config.h` の `WLED_IP` を `"192.168.0.200"` に変更して ESP32 ブリッジを再書き込みする
+
+---
+
+### T-2: 電源 ON 直後に LED が点灯する
+
+**症状**
+- PIR センサーが反応していないのに電源投入と同時に LED が光る
+
+**原因: WLED が前回の点灯状態を復元する**
+
+WLED は電源が入ると NVRAM に保存された最後の状態（ON/OFF・色・エフェクト）を自動復元する。ESP32 ブリッジが消灯命令を出す前に WLED が点灯してしまう。
+
+**解決方法（実装済み）**
+
+`esp32/src/main.cpp` の `setup()` 内で WiFi 接続後に `applyOff()` を呼び、ブリッジ起動時に必ず消灯状態にリセットしている。起動ログで `[BOOT] LED reset to OFF` が出ていれば正常。
+
+---
+
+### T-3: PIR センサーが反応しない（電源投入直後）
+
+**症状**
+- 電源投入後しばらく PIR が全く反応しない
+
+**原因: ウォームアップ期間（60 秒）**
+
+AM312 の誤検知を防ぐため、起動から 60 秒間は PIR の入力を無視する仕様（`PIR_WARMUP_MS`）。
+
+**確認方法**
+
+MQTT テストクライアントで `smartled/esp32/state` を Subscribe し、電源投入から 60 秒以上経過してから PIR 前で動く。`"lastTrigger":"PIR_ON"` が届けば ESP32 ブリッジは正常に検知している。
 
 ---
 
