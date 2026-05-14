@@ -103,6 +103,7 @@ npx cdk deploy SmartLED-IoTBackend --region ap-northeast-1 --require-approval ne
 - [ ] `[WiFi] Connected` が出る
 - [ ] `[PWR] WiFi sleep mode = MIN_MODEM` が出る
 - [ ] `[WLED] ABL hw.led.maxpwr=4250 mA applied` が出る
+- [ ] `[BOOT] LED reset to OFF (waiting for PIR or command)` が出る（WLED が消灯状態になる）
 - [ ] `[MQTT] Connected` が出る
 - [ ] `[MQTT] Subscribed:` に `control` と `mode` が含まれる
 - [ ] `[STATE] AUTO (trigger=MQTT_CONNECTED)` が出る
