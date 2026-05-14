@@ -256,12 +256,20 @@ pio device monitor -b 115200
 ### 3. WLED（2 台目の ESP32）
 
 WLED 公式リポジトリをクローンしてビルドし、2 台目の ESP32 に書き込みます。
-Web UI から WiFi と IP を設定したら、1 台目の `config.h` の `WLED_IP` を更新して再書き込みしてください。
 
 ```bash
 git clone https://github.com/Aircoookie/WLED.git
 # → PlatformIO でビルド・書き込み（詳細は docs/acceptance-checklist.md 第3章）
 ```
+
+書き込み後に Web UI（Config → WiFi Setup）で **静的 IP を必ず設定**してください。
+DHCP のままにすると再起動のたびに IP が変わり、ESP32 ブリッジからの HTTP 通信が途切れます。
+
+1. Static IP・Gateway・Subnet を入力して **Save & Connect**
+2. 設定した IP で Web UI が開くことを確認
+3. `esp32/include/config.h` の `WLED_IP` を同じ値に更新して、1 台目を再書き込み
+
+> 詳細な手順と注意事項（IP 競合の避け方など）は [docs/acceptance-checklist.md](docs/acceptance-checklist.md) 第3章を参照。
 
 ### 4. Alexa スキル
 

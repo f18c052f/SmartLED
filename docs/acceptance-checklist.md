@@ -167,14 +167,46 @@ npx cdk deploy SmartLED-IoTBackend --region ap-northeast-1 --require-approval ne
 
 - [ ] **第3章を完了した**
 
+### 3.1 ビルド・書き込み
+
 - [ ] WLED ルートで `npm ci` → `npm run build` を実行した（`wled00/html_*.h` が生成される）
 - [ ] `platformio_override.ini` に `default_envs = esp32dev` を記載した（`platformio.ini` は直接編集しない）
 - [ ] PlatformIO で Build → SUCCESS になった
 - [ ] Upload で 2 台目 ESP32 に書き込んだ
-- [ ] AP から WiFi を設定した
-- [ ] Web UI で IP を確認した
-- [ ] `config.h` の `WLED_IP` を更新し 1 台目を再アップロードした
+
+### 3.2 WiFi 設定
+
+- [ ] 書き込み直後に `WLED-AP`（パスワード: `wled1234`）という Wi-Fi が表示された
+- [ ] `WLED-AP` に接続し `http://4.3.2.1` を開いた
+- [ ] Config → WiFi Setup で自宅 Wi-Fi の SSID / パスワードを入力し Save した
+- [ ] WLED が自宅 LAN に接続し、mDNS（例: `http://wled-xxxxxx.local`）または ルータの DHCP 一覧で IP を確認した
+
+### 3.3 静的 IP の設定（必須）
+
+> DHCP では再起動のたびに WLED の IP が変わる可能性があります。
+> ESP32 ブリッジの `config.h` に IP をハードコードしているため、**静的 IP の設定は必須**です。
+> 設定しないと再起動後に通信が切れ、Alexa からの操作が届かなくなります。
+
+- [ ] WLED Web UI（`http://<現在の IP>/`）を開いた
+- [ ] **Config → WiFi Setup** を開いた
+- [ ] 以下の静的 IP 設定を入力した
+
+  | 項目 | 設定値の例 | 備考 |
+  |------|-----------|------|
+  | Static IP | `192.168.0.8` | ルータの DHCP 割り当て範囲**外**の未使用 IP を選ぶ |
+  | Static Gateway | `192.168.0.1` | ルータの IP（`ipconfig` / `ip route` で確認） |
+  | Static Subnet | `255.255.255.0` | 通常の家庭環境はこの値 |
+
+  > **IP 競合に注意:** ルータの DHCP リースから IP 一覧を確認し、他のデバイスが使っていない IP を選んでください。使用中の IP を指定すると WLED が接続できなくなります。
+
+- [ ] **Save & Connect** を押し、設定した静的 IP（例: `http://192.168.0.8`）で Web UI が開くことを確認した
+- [ ] `config.h` の `WLED_IP` に上記の静的 IP を設定した（`config.h` と WLED の IP が一致していること）
+
+### 3.4 動作確認
+
 - [ ] Web UI で手動色変更・エフェクト変化を確認した
+- [ ] ESP32 ブリッジ（1 台目）を静的 IP に合わせた `config.h` で再ビルド・再書き込みした
+- [ ] 2.3 起動ログに `[WLED] ABL hw.led.maxpwr=4250 mA applied` が出た（ABL 同期が通っていることを確認）
 
 ---
 
@@ -218,8 +250,8 @@ npx cdk deploy SmartLED-IoTBackend --region ap-northeast-1 --require-approval ne
 - [ ] **第6章を完了した**
 
 - [ ] `config.h` の WiFi SSID / パスワードを新環境に更新した
-- [ ] WLED の WiFi を新環境に再設定した
-- [ ] `WLED_IP` を新環境 LAN に合わせた（固定 IP 推奨）
+- [ ] WLED の WiFi を新環境に再設定した（WLED-AP から再設定）
+- [ ] **WLED の静的 IP を新環境 LAN に合わせて再設定した**（第3章 §3.3 参照、固定 IP は必須）
 - [ ] 1 台目を再ビルド・再書き込みした
 - [ ] 第5章 E2E を新環境で再実施した
 
