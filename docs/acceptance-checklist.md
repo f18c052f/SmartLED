@@ -14,6 +14,7 @@
 - [ ] **第5章** E2E
 - [ ] **第6章** 環境変更時
 - [ ] **第7章** 完了宣言（DoD）
+- 📋 **第8章** トラブルシューティング（チェック項目なし・参照用）
 
 ---
 
@@ -103,6 +104,7 @@ npx cdk deploy SmartLED-IoTBackend --region ap-northeast-1 --require-approval ne
 - [ ] `[WiFi] Connected` が出る
 - [ ] `[PWR] WiFi sleep mode = MIN_MODEM` が出る
 - [ ] `[WLED] ABL hw.led.maxpwr=4250 mA applied` が出る
+- [ ] `[BOOT] LED reset to OFF (waiting for PIR or command)` が出る（WLED が消灯状態になる）
 - [ ] `[MQTT] Connected` が出る
 - [ ] `[MQTT] Subscribed:` に `control` と `mode` が含まれる
 - [ ] `[STATE] AUTO (trigger=MQTT_CONNECTED)` が出る
@@ -167,14 +169,46 @@ npx cdk deploy SmartLED-IoTBackend --region ap-northeast-1 --require-approval ne
 
 - [ ] **第3章を完了した**
 
+### 3.1 ビルド・書き込み
+
 - [ ] WLED ルートで `npm ci` → `npm run build` を実行した（`wled00/html_*.h` が生成される）
 - [ ] `platformio_override.ini` に `default_envs = esp32dev` を記載した（`platformio.ini` は直接編集しない）
 - [ ] PlatformIO で Build → SUCCESS になった
 - [ ] Upload で 2 台目 ESP32 に書き込んだ
-- [ ] AP から WiFi を設定した
-- [ ] Web UI で IP を確認した
-- [ ] `config.h` の `WLED_IP` を更新し 1 台目を再アップロードした
+
+### 3.2 WiFi 設定
+
+- [ ] 書き込み直後に `WLED-AP`（パスワード: `wled1234`）という Wi-Fi が表示された
+- [ ] `WLED-AP` に接続し `http://4.3.2.1` を開いた
+- [ ] Config → WiFi Setup で自宅 Wi-Fi の SSID / パスワードを入力し Save した
+- [ ] WLED が自宅 LAN に接続し、mDNS（例: `http://wled-xxxxxx.local`）または ルータの DHCP 一覧で IP を確認した
+
+### 3.3 静的 IP の設定（必須）
+
+> DHCP では再起動のたびに WLED の IP が変わる可能性があります。
+> ESP32 ブリッジの `config.h` に IP をハードコードしているため、**静的 IP の設定は必須**です。
+> 設定しないと再起動後に通信が切れ、Alexa からの操作が届かなくなります。
+
+- [ ] WLED Web UI（`http://<現在の IP>/`）を開いた
+- [ ] **Config → WiFi Setup** を開いた
+- [ ] 以下の静的 IP 設定を入力した
+
+  | 項目 | 設定値の例 | 備考 |
+  |------|-----------|------|
+  | Static IP | `192.168.0.200` | ルータの DHCP 割り当て範囲**外**の未使用 IP を選ぶ（200 番台は家庭用ルーターの DHCP 範囲外になることが多い） |
+  | Static Gateway | `192.168.0.1` | ルータの IP（`ipconfig` / `ip route` で確認） |
+  | Static Subnet | `255.255.255.0` | 通常の家庭環境はこの値 |
+
+  > **IP 競合に注意:** ルータの DHCP リースから IP 一覧を確認し、他のデバイスが使っていない IP を選んでください。使用中の IP を指定すると WLED が接続できなくなります。
+
+- [ ] **Save & Connect** を押し、設定した静的 IP（例: `http://192.168.0.8`）で Web UI が開くことを確認した
+- [ ] `config.h` の `WLED_IP` に上記の静的 IP を設定した（`config.h` と WLED の IP が一致していること）
+
+### 3.4 動作確認
+
 - [ ] Web UI で手動色変更・エフェクト変化を確認した
+- [ ] ESP32 ブリッジ（1 台目）を静的 IP に合わせた `config.h` で再ビルド・再書き込みした
+- [ ] 2.3 起動ログに `[WLED] ABL hw.led.maxpwr=4250 mA applied` が出た（ABL 同期が通っていることを確認）
 
 ---
 
@@ -218,8 +252,8 @@ npx cdk deploy SmartLED-IoTBackend --region ap-northeast-1 --require-approval ne
 - [ ] **第6章を完了した**
 
 - [ ] `config.h` の WiFi SSID / パスワードを新環境に更新した
-- [ ] WLED の WiFi を新環境に再設定した
-- [ ] `WLED_IP` を新環境 LAN に合わせた（固定 IP 推奨）
+- [ ] WLED の WiFi を新環境に再設定した（WLED-AP から再設定）
+- [ ] **WLED の静的 IP を新環境 LAN に合わせて再設定した**（第3章 §3.3 参照、固定 IP は必須）
 - [ ] 1 台目を再ビルド・再書き込みした
 - [ ] 第5章 E2E を新環境で再実施した
 
@@ -235,6 +269,67 @@ npx cdk deploy SmartLED-IoTBackend --region ap-northeast-1 --require-approval ne
 - [ ] 第4章を完了した
 - [ ] 第5章を完了した
 - [ ] 不具合・仕様差分は Issue または `docs/requirements.md` に反映済みである
+
+---
+
+## 第8章 トラブルシューティング
+
+---
+
+### T-1: Alexa で操作しても LED が光らない（断続的）
+
+**症状**
+- MQTT テストクライアントで `lastTrigger: "MQTT_CONTROL"` や `"PIR_ON"` は届くが LED が変化しない
+- `http://<WLED_IP>` が開けたり開けなかったりする
+
+**原因: WLED の IP 競合**
+
+WLED に設定した静的 IP がルーターの DHCP 割り当て範囲内だと、ルーターが同じ IP を別のデバイスに配布して競合する。競合した側のデバイスが接続するたびに WLED が応答できなくなる。
+
+**確認方法**
+
+1. `http://wled-xxxxxx.local`（mDNS）は繋がるのに `http://<WLED_IP>` が繋がらない場合は競合を疑う
+2. ルーター管理画面（多くは `http://192.168.0.1` または `http://192.168.1.1`）で「接続中のデバイス一覧」を確認し、同じ IP に複数デバイスが表示されていないか確認する
+
+**解決方法**
+
+WLED の静的 IP を DHCP 範囲外のアドレスに変更する。家庭用ルーターの DHCP 割り当ては通常 `192.168.x.2〜100` 程度なので、`192.168.0.200` など **200 番台**が安全。
+
+1. `http://wled-xxxxxx.local/settings/wifi` を開く（IP で開けなくても mDNS なら到達できることが多い）
+2. Static IP の最終オクテットを `200` に変更して **Save & Connect**
+3. 変更が反映されない場合は `http://wled-xxxxxx.local/reset` で再起動を強制する
+4. `http://192.168.0.200` で Web UI が開くことを確認する
+5. `esp32/include/config.h` の `WLED_IP` を `"192.168.0.200"` に変更して ESP32 ブリッジを再書き込みする
+
+---
+
+### T-2: 電源 ON 直後に LED が点灯する
+
+**症状**
+- PIR センサーが反応していないのに電源投入と同時に LED が光る
+
+**原因: WLED が前回の点灯状態を復元する**
+
+WLED は電源が入ると NVRAM に保存された最後の状態（ON/OFF・色・エフェクト）を自動復元する。ESP32 ブリッジが消灯命令を出す前に WLED が点灯してしまう。
+
+**解決方法（実装済み）**
+
+`esp32/src/main.cpp` の `setup()` 内で WiFi 接続後に `applyOff()` を呼び、ブリッジ起動時に必ず消灯状態にリセットしている。起動ログで `[BOOT] LED reset to OFF` が出ていれば正常。
+
+---
+
+### T-3: PIR センサーが反応しない（電源投入直後）
+
+**症状**
+- 電源投入後しばらく PIR が全く反応しない
+
+**原因: ウォームアップ期間（60 秒）**
+
+AM312 の誤検知を防ぐため、起動から 60 秒間は PIR の入力を無視する仕様（`PIR_WARMUP_MS`）。
+
+**確認方法**
+
+MQTT テストクライアントで `smartled/esp32/state` を Subscribe し、電源投入から 60 秒以上経過してから PIR 前で動く。`"lastTrigger":"PIR_ON"` が届けば ESP32 ブリッジは正常に検知している。
 
 ---
 

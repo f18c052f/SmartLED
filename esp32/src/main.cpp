@@ -139,6 +139,12 @@ void setup() {
   // WLED ABL 上限（requirements.md §4）を RAM に同期（MQTT より先に実施）
   syncWledAblOnBoot();
 
+  // 起動時に WLED を必ず消灯状態にリセット
+  // WLED は電源投入時に前回の点灯状態を NVRAM から復元するため、
+  // ブリッジが applyOff() を送らないと PIR 検知前から LED が光り続ける
+  applyOff();
+  Serial.println("[BOOT] LED reset to OFF (waiting for PIR or command)");
+
   // TLS とサーバー設定
   wifiSecureClient.setCACert(AWS_CERT_CA);
   wifiSecureClient.setCertificate(AWS_CERT_CRT);
